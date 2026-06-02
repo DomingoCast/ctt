@@ -3,7 +3,43 @@ const app = @import("application");
 const view = @import("view.zig");
 const d = @import("domain");
 
-pub const Mode = enum { normal }; // 8.4 will add `add_todo_modal`
+pub const Mode = enum { normal, add_todo_modal };
+
+pub const ModalFocus = enum { title, branch, issue };
+
+pub const AddTodoModal = struct {
+    focus: ModalFocus = .title,
+    title_buf: std.ArrayList(u8) = .empty,
+    branch_buf: std.ArrayList(u8) = .empty,
+    issue_buf: std.ArrayList(u8) = .empty,
+
+    pub fn deinit(self: *AddTodoModal, a: std.mem.Allocator) void {
+        self.title_buf.deinit(a);
+        self.branch_buf.deinit(a);
+        self.issue_buf.deinit(a);
+    }
+
+    pub fn reset(self: *AddTodoModal, a: std.mem.Allocator) void {
+        self.deinit(a);
+        self.* = .{};
+    }
+
+    pub fn focused(self: *AddTodoModal) *std.ArrayList(u8) {
+        return switch (self.focus) {
+            .title => &self.title_buf,
+            .branch => &self.branch_buf,
+            .issue => &self.issue_buf,
+        };
+    }
+
+    pub fn cycleFocus(self: *AddTodoModal) void {
+        self.focus = switch (self.focus) {
+            .title => .branch,
+            .branch => .issue,
+            .issue => .title,
+        };
+    }
+};
 
 pub const State = struct {
     allocator: std.mem.Allocator,
@@ -12,6 +48,7 @@ pub const State = struct {
     mode: Mode = .normal,
     refreshing: bool = false,
     last_message: ?[]const u8 = null,
+    add_todo_modal: AddTodoModal = .{},
 
     pub fn init(a: std.mem.Allocator) State {
         return .{ .allocator = a, .views = &.{} };
@@ -20,6 +57,7 @@ pub const State = struct {
     pub fn deinit(self: *State) void {
         self.allocator.free(self.views);
         if (self.last_message) |m| self.allocator.free(m);
+        self.add_todo_modal.deinit(self.allocator);
     }
 
     pub fn setViews(self: *State, new_views: []app.TaskView) void {
@@ -64,6 +102,28 @@ pub const State = struct {
         return null;
     }
 };
+
+test "modal cycleFocus rotates through title->branch->issue->title" {
+    var m = AddTodoModal{};
+    defer m.deinit(std.testing.allocator);
+    try std.testing.expectEqual(ModalFocus.title, m.focus);
+    m.cycleFocus();
+    try std.testing.expectEqual(ModalFocus.branch, m.focus);
+    m.cycleFocus();
+    try std.testing.expectEqual(ModalFocus.issue, m.focus);
+    m.cycleFocus();
+    try std.testing.expectEqual(ModalFocus.title, m.focus);
+}
+
+test "modal focused buffer returns the right pointer" {
+    var m = AddTodoModal{};
+    defer m.deinit(std.testing.allocator);
+    try m.title_buf.appendSlice(std.testing.allocator, "hello");
+    try std.testing.expectEqualStrings("hello", m.focused().items);
+    m.focus = .branch;
+    try m.branch_buf.appendSlice(std.testing.allocator, "feat/x");
+    try std.testing.expectEqualStrings("feat/x", m.focused().items);
+}
 
 test "columnCount returns 0 for empty views" {
     var s = State.init(std.testing.allocator);

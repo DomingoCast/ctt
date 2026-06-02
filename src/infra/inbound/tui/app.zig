@@ -2,7 +2,9 @@ const std = @import("std");
 const vaxis = @import("vaxis");
 const view = @import("view.zig");
 const state_mod = @import("state.zig");
+const modal_mod = @import("modal.zig");
 const UseCases = @import("use_cases.zig").UseCases;
+const d = @import("domain");
 
 const Event = union(enum) {
     key_press: vaxis.Key,
@@ -49,7 +51,8 @@ pub fn run(
         const event = try loop.nextEvent();
         switch (event) {
             .key_press => |k| {
-                if (k.matches('q', .{})) break;
+                // 'q' only exits in normal mode
+                if (state.mode == .normal and k.matches('q', .{})) break;
                 try handleKey(a, uc, &state, k);
             },
             .winsize => |ws| try vx.resize(a, tty.writer(), ws),
@@ -66,11 +69,23 @@ pub fn run(
             );
         }
 
+        // Overlay modal if active
+        if (state.mode == .add_todo_modal) {
+            modal_mod.renderAddTodo(win, &state.add_todo_modal);
+        }
+
         try vx.render(tty.writer());
     }
 }
 
 fn handleKey(a: std.mem.Allocator, uc: *UseCases, state: *state_mod.State, k: vaxis.Key) !void {
+    switch (state.mode) {
+        .normal => try handleNormalKey(a, uc, state, k),
+        .add_todo_modal => try handleModalKey(a, uc, state, k),
+    }
+}
+
+fn handleNormalKey(a: std.mem.Allocator, uc: *UseCases, state: *state_mod.State, k: vaxis.Key) !void {
     if (k.matches('h', .{}) or k.matches(vaxis.Key.left, .{})) {
         if (state.sel.column > 0) state.sel.column -= 1;
         state.sel.row = 0;
@@ -91,7 +106,68 @@ fn handleKey(a: std.mem.Allocator, uc: *UseCases, state: *state_mod.State, k: va
         try doArchive(a, uc, state);
     } else if (k.matches('d', .{})) {
         try doDelete(a, uc, state);
+    } else if (k.matches('a', .{})) {
+        state.mode = .add_todo_modal;
     }
+}
+
+fn handleModalKey(a: std.mem.Allocator, uc: *UseCases, state: *state_mod.State, k: vaxis.Key) !void {
+    const modal = &state.add_todo_modal;
+
+    if (k.matches(vaxis.Key.escape, .{})) {
+        modal.reset(a);
+        state.mode = .normal;
+        return;
+    }
+    if (k.matches(vaxis.Key.enter, .{})) {
+        try submitModal(a, uc, state);
+        return;
+    }
+    if (k.matches(vaxis.Key.tab, .{})) {
+        modal.cycleFocus();
+        return;
+    }
+    if (k.matches(vaxis.Key.backspace, .{})) {
+        const buf = modal.focused();
+        if (buf.items.len > 0) _ = buf.pop();
+        return;
+    }
+    // Typed character: vaxis exposes printable text via Key.text
+    if (k.text) |t| {
+        const buf = modal.focused();
+        try buf.appendSlice(a, t);
+    }
+}
+
+fn submitModal(a: std.mem.Allocator, uc: *UseCases, state: *state_mod.State) !void {
+    const modal = &state.add_todo_modal;
+    if (modal.title_buf.items.len == 0) {
+        try state.setMessage("title required");
+        return;
+    }
+
+    const branch_hint: ?d.BranchName = if (modal.branch_buf.items.len > 0)
+        d.BranchName.init(modal.branch_buf.items)
+    else
+        null;
+
+    const t = uc.add_todo.execute(a, .{
+        .title = modal.title_buf.items,
+        .branch_hint = branch_hint,
+    }) catch |err| {
+        const msg = try std.fmt.allocPrint(a, "add failed: {s}", .{@errorName(err)});
+        defer a.free(msg);
+        try state.setMessage(msg);
+        return;
+    };
+
+    const msg = try std.fmt.allocPrint(a, "added task #{d}", .{t.id.raw()});
+    defer a.free(msg);
+    try state.setMessage(msg);
+
+    modal.reset(a);
+    state.mode = .normal;
+    try doRefresh(a, uc, state);
 }
 
 fn doRefresh(a: std.mem.Allocator, uc: *UseCases, state: *state_mod.State) !void {
