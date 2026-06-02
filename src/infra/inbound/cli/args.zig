@@ -155,6 +155,8 @@ pub fn freeCommand(a: std.mem.Allocator, cmd: Command) void {
 
 fn parseList(a: std.mem.Allocator, argv: []const [:0]u8) ParseError!Command {
     var result = ListArgs{};
+    errdefer if (result.status) |s| a.free(s);
+    errdefer if (result.repo) |r| a.free(r);
     var i: usize = 0;
     while (i < argv.len) : (i += 1) {
         const arg = argv[i];
@@ -195,6 +197,9 @@ fn parseShow(a: std.mem.Allocator, argv: []const [:0]u8) ParseError!Command {
 fn parseAdd(a: std.mem.Allocator, argv: []const [:0]u8) ParseError!Command {
     var result = AddArgs{ .title = "" };
     var got_title = false;
+    errdefer if (result.branch) |b| a.free(b);
+    errdefer if (result.issue) |iss| a.free(iss);
+    errdefer if (got_title) a.free(result.title);
     var i: usize = 0;
     while (i < argv.len) : (i += 1) {
         const arg = argv[i];
@@ -218,6 +223,9 @@ fn parseAdd(a: std.mem.Allocator, argv: []const [:0]u8) ParseError!Command {
 fn parseUpdate(a: std.mem.Allocator, argv: []const [:0]u8) ParseError!Command {
     var result = UpdateArgs{ .id = 0 };
     var got_id = false;
+    errdefer if (result.title) |t| a.free(t);
+    errdefer if (result.branch_hint) |b| a.free(b);
+    errdefer if (result.notes) |n| a.free(n);
     var i: usize = 0;
     while (i < argv.len) : (i += 1) {
         const arg = argv[i];
@@ -245,6 +253,9 @@ fn parseUpdate(a: std.mem.Allocator, argv: []const [:0]u8) ParseError!Command {
 fn parseLink(a: std.mem.Allocator, argv: []const [:0]u8) ParseError!Command {
     var result = LinkArgs{ .id = 0 };
     var got_id = false;
+    errdefer if (result.worktree) |w| a.free(w);
+    errdefer if (result.pr) |p| a.free(p);
+    errdefer if (result.issue) |iss| a.free(iss);
     var i: usize = 0;
     while (i < argv.len) : (i += 1) {
         const arg = argv[i];
@@ -579,4 +590,61 @@ test "config linear set-token" {
     try std.testing.expect(cmd == .config);
     try std.testing.expect(cmd.config == .linear_set_token);
     try std.testing.expectEqualStrings("tok123", cmd.config.linear_set_token.token);
+}
+
+// Leak-regression tests: std.testing.allocator panics on leak, so a clean
+// exit proves errdefer freed all partial allocations on error paths.
+
+test "parseAdd with --branch but no title leaks nothing" {
+    const args = [_][:0]u8{
+        @constCast(@as([:0]const u8, "add")),
+        @constCast(@as([:0]const u8, "--branch")),
+        @constCast(@as([:0]const u8, "feat/x")),
+    };
+    const result = parseFromArgs(std.testing.allocator, &args);
+    try std.testing.expectError(error.MissingArg, result);
+}
+
+test "parseAdd with --branch and --issue but no title leaks nothing" {
+    const args = [_][:0]u8{
+        @constCast(@as([:0]const u8, "add")),
+        @constCast(@as([:0]const u8, "--branch")),
+        @constCast(@as([:0]const u8, "feat/x")),
+        @constCast(@as([:0]const u8, "--issue")),
+        @constCast(@as([:0]const u8, "ISS-42")),
+    };
+    const result = parseFromArgs(std.testing.allocator, &args);
+    try std.testing.expectError(error.MissingArg, result);
+}
+
+test "parseUpdate with --title but no id leaks nothing" {
+    const args = [_][:0]u8{
+        @constCast(@as([:0]const u8, "update")),
+        @constCast(@as([:0]const u8, "--title")),
+        @constCast(@as([:0]const u8, "new name")),
+    };
+    const result = parseFromArgs(std.testing.allocator, &args);
+    try std.testing.expectError(error.MissingArg, result);
+}
+
+test "parseLink with --pr but no id leaks nothing" {
+    const args = [_][:0]u8{
+        @constCast(@as([:0]const u8, "link")),
+        @constCast(@as([:0]const u8, "--pr")),
+        @constCast(@as([:0]const u8, "https://github.com/org/repo/pull/7")),
+    };
+    const result = parseFromArgs(std.testing.allocator, &args);
+    try std.testing.expectError(error.MissingArg, result);
+}
+
+test "parseList with --status then missing value leaks nothing" {
+    const args = [_][:0]u8{
+        @constCast(@as([:0]const u8, "list")),
+        @constCast(@as([:0]const u8, "--repo")),
+        @constCast(@as([:0]const u8, "myrepo")),
+        @constCast(@as([:0]const u8, "--status")),
+        // intentionally no value after --status
+    };
+    const result = parseFromArgs(std.testing.allocator, &args);
+    try std.testing.expectError(error.MissingArg, result);
 }
