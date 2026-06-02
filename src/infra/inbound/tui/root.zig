@@ -1,9 +1,14 @@
 pub const app = @import("app.zig");
 pub const view = @import("view.zig");
+pub const state = @import("state.zig");
+pub const UseCases = @import("use_cases.zig").UseCases;
 pub const run = app.run;
 pub const Selection = view.Selection;
+pub const State = state.State;
 
 test {
-    _ = @import("app.zig");
-    _ = @import("view.zig");
+    _ = view;
+    _ = state;
+    _ = @import("use_cases.zig");
+    // app.zig requires a real TTY, so don't include it in the test block
 }
