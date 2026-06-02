@@ -6,6 +6,11 @@ const d = @import("domain");
 pub fn parsePorcelain(a: std.mem.Allocator, text: []const u8) ![]d.WorktreeSnapshot {
     var out: std.ArrayList(d.WorktreeSnapshot) = .empty;
     defer out.deinit(a);
+    errdefer for (out.items) |snap| {
+        a.free(snap.path);
+        a.free(snap.branch.value);
+        a.free(snap.head_sha.value);
+    };
 
     var cur_path: ?[]const u8 = null;
     var cur_sha: ?[]const u8 = null;
@@ -35,19 +40,28 @@ fn flushBlock(
     s: *?[]const u8,
     b: *?[]const u8,
 ) !void {
+    defer {
+        p.* = null;
+        s.* = null;
+        b.* = null;
+    }
     if (p.* != null and s.* != null and b.* != null) {
+        const path = try a.dupe(u8, p.*.?);
+        errdefer a.free(path);
+        const branch = try a.dupe(u8, b.*.?);
+        errdefer a.free(branch);
+        const sha = try a.dupe(u8, s.*.?);
+        errdefer a.free(sha);
+
         try out.append(a, .{
-            .path = try a.dupe(u8, p.*.?),
-            .branch = .{ .value = try a.dupe(u8, b.*.?) },
-            .head_sha = .{ .value = try a.dupe(u8, s.*.?) },
+            .path = path,
+            .branch = .{ .value = branch },
+            .head_sha = .{ .value = sha },
             .commits_ahead_of_default = 0,
             .has_upstream = false,
             .commits_ahead_of_upstream = null,
         });
     }
-    p.* = null;
-    s.* = null;
-    b.* = null;
 }
 
 fn stripRefs(s: []const u8) []const u8 {
@@ -131,14 +145,8 @@ fn runGit(a: std.mem.Allocator, io: std.Io, cwd: []const u8, args: []const []con
     errdefer a.free(result.stdout);
 
     switch (result.term) {
-        .exited => |code| if (code != 0) {
-            a.free(result.stdout);
-            return error.GitFailed;
-        },
-        else => {
-            a.free(result.stdout);
-            return error.GitFailed;
-        },
+        .exited => |code| if (code != 0) return error.GitFailed,
+        else => return error.GitFailed,
     }
     return result.stdout;
 }
