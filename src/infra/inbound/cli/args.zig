@@ -80,10 +80,23 @@ pub const ParseError = error{ MissingArg, BadInt, UnknownCommand, ParseFailed, O
 // ---------------------------------------------------------------------------
 
 /// Parse from actual process args. Skips argv[0] (exe name).
-pub fn parse(a: std.mem.Allocator) ParseError!Command {
-    const args_iter = try std.process.argsAlloc(a);
-    defer std.process.argsFree(a, args_iter);
-    return try parseFromArgs(a, if (args_iter.len < 2) &.{} else args_iter[1..]);
+/// `process_args` is `std.process.Args` (provided by the runtime via `std.process.Init`).
+pub fn parse(a: std.mem.Allocator, process_args: std.process.Args) ParseError!Command {
+    // On POSIX, Args.vector is []const [*:0]const u8.
+    const vec = process_args.vector;
+    // vec[0] is argv[0] (the exe name); we want everything after that.
+    if (vec.len < 2) return .none;
+    const rest = vec[1..];
+    // Allocate a temporary slice of [:0]u8 that parseFromArgs expects.
+    // Each element is a sentinel-terminated mutable slice view over the same memory.
+    const sub_args = try a.alloc([:0]u8, rest.len);
+    defer a.free(sub_args);
+    for (rest, 0..) |ptr, i| {
+        // std.mem.span gives us [:0]const u8; we need [:0]u8.
+        // The runtime owns this memory for the lifetime of main, so the cast is safe.
+        sub_args[i] = @constCast(std.mem.span(ptr));
+    }
+    return try parseFromArgs(a, sub_args);
 }
 
 /// Parse from a caller-supplied slice (used in tests and by `parse`).
