@@ -27,7 +27,7 @@ pub const RefreshAll = struct {
         for (repos) |repo| {
             const snaps = self.worktrees.list(a, repo) catch |err| {
                 const msg = std.fmt.allocPrint(a, "worktrees.list({s}) failed: {s}", .{ repo.name, @errorName(err) }) catch continue;
-                report.errors.append(a, msg) catch {};
+                report.errors.append(a, msg) catch a.free(msg);
                 continue;
             };
             defer a.free(snaps);
@@ -35,7 +35,7 @@ pub const RefreshAll = struct {
             for (snaps) |snap| {
                 const task = self.ensureTaskForWorktree(a, repo, snap, &report) catch |err| {
                     const msg = std.fmt.allocPrint(a, "ensureTaskForWorktree failed: {s}", .{@errorName(err)}) catch continue;
-                    report.errors.append(a, msg) catch {};
+                    report.errors.append(a, msg) catch a.free(msg);
                     continue;
                 };
 
@@ -50,7 +50,7 @@ pub const RefreshAll = struct {
                     }
                 } else |err| {
                     const msg = std.fmt.allocPrint(a, "gh PR lookup for {s} failed: {s}", .{ snap.branch.value, @errorName(err) }) catch continue;
-                    report.errors.append(a, msg) catch {};
+                    report.errors.append(a, msg) catch a.free(msg);
                 }
 
                 // Issue lookup (only if task has no issue link yet)
@@ -70,7 +70,7 @@ pub const RefreshAll = struct {
                                 }
                             } else |err| {
                                 const msg = std.fmt.allocPrint(a, "{s} issue fetch failed: {s}", .{ ref.provider, @errorName(err) }) catch continue;
-                                report.errors.append(a, msg) catch {};
+                                report.errors.append(a, msg) catch a.free(msg);
                             }
                             break;
                         }
