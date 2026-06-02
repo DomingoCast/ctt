@@ -16,8 +16,6 @@ pub fn derive(task: Task) Status {
 
 // === tests ===
 
-const ids = @import("../value_objects/ids.zig");
-
 const test_helpers = struct {
     fn baseTask() Task {
         return Task{
