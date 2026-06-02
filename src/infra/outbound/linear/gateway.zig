@@ -21,7 +21,9 @@ pub fn parseResponse(a: std.mem.Allocator, body: []const u8) !?d.IssueSnapshot {
     if (issue != .object) return null;
     const obj = issue.object;
 
-    const external_id_dup = try a.dupe(u8, obj.get("identifier").?.string);
+    const id_value = obj.get("identifier") orelse return null;
+    if (id_value != .string) return null;
+    const external_id_dup = try a.dupe(u8, id_value.string);
     errdefer a.free(external_id_dup);
 
     const url_dup = if (obj.get("url")) |v| (if (v == .string) try a.dupe(u8, v.string) else null) else null;
@@ -129,6 +131,12 @@ test "null issue returns null" {
 
 test "missing data field returns null" {
     const body = "{}";
+    const got = try parseResponse(std.testing.allocator, body);
+    try std.testing.expectEqual(@as(?d.IssueSnapshot, null), got);
+}
+
+test "missing identifier returns null (does not panic)" {
+    const body = "{\"data\":{\"issue\":{\"url\":\"https://x\"}}}";
     const got = try parseResponse(std.testing.allocator, body);
     try std.testing.expectEqual(@as(?d.IssueSnapshot, null), got);
 }
