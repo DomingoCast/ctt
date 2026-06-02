@@ -6,7 +6,8 @@ pub const Db = struct {
     conn: zqlite.Conn,
 
     pub fn open(path: [*:0]const u8) !Db {
-        const conn = try zqlite.open(path, zqlite.OpenFlags.Create | zqlite.OpenFlags.EXResCode);
+        var conn = try zqlite.open(path, zqlite.OpenFlags.Create | zqlite.OpenFlags.EXResCode);
+        errdefer conn.close();
         var db = Db{ .conn = conn };
         try db.migrate();
         return db;
