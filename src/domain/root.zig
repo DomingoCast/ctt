@@ -25,4 +25,29 @@ pub const derive_status = @import("services/status_derive.zig").derive;
 pub const ticket = @import("services/ticket_parse.zig");
 pub const hints = @import("services/hints.zig");
 
+pub const ports = struct {
+    pub const TaskRepository = @import("ports/task_repository.zig").TaskRepository;
+    pub const WorktreeReader = @import("ports/worktree_reader.zig").WorktreeReader;
+    pub const PrGateway      = @import("ports/pr_gateway.zig").PrGateway;
+    pub const IssueGateway   = @import("ports/issue_gateway.zig").IssueGateway;
+    pub const Clock          = @import("ports/clock.zig").Clock;
+};
+
 test { _ = @import("entities/task.zig"); _ = @import("services/status_derive.zig"); _ = @import("services/ticket_parse.zig"); _ = @import("services/hints.zig"); }
+
+test "Clock vtable round-trip" {
+    const std = @import("std");
+    const TS = @import("value_objects/timestamp.zig").Timestamp;
+    const Clock = ports.Clock;
+    const Fake = struct {
+        value: TS,
+        fn nowFn(p: *anyopaque) TS {
+            const self: *@This() = @ptrCast(@alignCast(p));
+            return self.value;
+        }
+        const vt = Clock.VTable{ .now = nowFn };
+    };
+    var f = Fake{ .value = .{ .unix_secs = 42 } };
+    const c = Clock{ .ptr = &f, .vtable = &Fake.vt };
+    try std.testing.expectEqual(@as(i64, 42), c.now().unix_secs);
+}
