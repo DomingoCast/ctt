@@ -8,6 +8,8 @@ pub const ArchiveTask = @import("use_cases/archive_task.zig").ArchiveTask;
 pub const DeleteTask  = @import("use_cases/delete_task.zig").DeleteTask;
 pub const LinkTask    = @import("use_cases/link_task.zig").LinkTask;
 pub const LinkTarget  = @import("use_cases/link_task.zig").LinkTarget;
+pub const RefreshAll  = @import("use_cases/refresh_all.zig").RefreshAll;
+pub const RefreshReport = @import("use_cases/refresh_all.zig").RefreshReport;
 
 test {
     _ = @import("use_cases/add_todo.zig");
@@ -17,4 +19,6 @@ test {
     _ = @import("use_cases/archive_task.zig");
     _ = @import("use_cases/delete_task.zig");
     _ = @import("use_cases/link_task.zig");
+    _ = @import("use_cases/refresh_all.zig");
+    _ = @import("tests/refresh_all_test.zig");
 }
