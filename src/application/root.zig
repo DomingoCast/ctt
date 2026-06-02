@@ -1,1 +1,20 @@
-pub const _ = {};
+pub const TaskView    = @import("use_cases/task_view.zig").TaskView;
+pub const AddTodo     = @import("use_cases/add_todo.zig").AddTodo;
+pub const AddTodoInput= @import("use_cases/add_todo.zig").AddTodoInput;
+pub const ListTasks   = @import("use_cases/list_tasks.zig").ListTasks;
+pub const GetTask     = @import("use_cases/get_task.zig").GetTask;
+pub const UpdateTask  = @import("use_cases/update_task.zig").UpdateTask;
+pub const ArchiveTask = @import("use_cases/archive_task.zig").ArchiveTask;
+pub const DeleteTask  = @import("use_cases/delete_task.zig").DeleteTask;
+pub const LinkTask    = @import("use_cases/link_task.zig").LinkTask;
+pub const LinkTarget  = @import("use_cases/link_task.zig").LinkTarget;
+
+test {
+    _ = @import("use_cases/add_todo.zig");
+    _ = @import("use_cases/list_tasks.zig");
+    _ = @import("use_cases/get_task.zig");
+    _ = @import("use_cases/update_task.zig");
+    _ = @import("use_cases/archive_task.zig");
+    _ = @import("use_cases/delete_task.zig");
+    _ = @import("use_cases/link_task.zig");
+}
