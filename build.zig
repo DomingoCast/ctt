@@ -63,6 +63,14 @@ pub fn build(b: *std.Build) void {
     });
     infra_linear.addImport("domain", domain);
 
+    // infra_config: imports domain
+    const infra_config = b.addModule("infra_config", .{
+        .root_source_file = b.path("src/infra/outbound/config/root.zig"),
+        .target = target,
+        .optimize = optimize,
+    });
+    infra_config.addImport("domain", domain);
+
     // infra_cli: imports domain, application, clap
     const infra_cli = b.addModule("infra_cli", .{
         .root_source_file = b.path("src/infra/inbound/cli/root.zig"),
@@ -106,6 +114,7 @@ pub fn build(b: *std.Build) void {
                 .{ .name = "infra_git", .module = infra_git },
                 .{ .name = "infra_gh", .module = infra_gh },
                 .{ .name = "infra_linear", .module = infra_linear },
+                .{ .name = "infra_config", .module = infra_config },
                 .{ .name = "infra_cli", .module = infra_cli },
                 .{ .name = "infra_mcp", .module = infra_mcp },
                 .{ .name = "infra_tui", .module = infra_tui },
@@ -124,6 +133,7 @@ pub fn build(b: *std.Build) void {
         infra_git,
         infra_gh,
         infra_linear,
+        infra_config,
         infra_cli,
         infra_mcp,
         infra_tui,
