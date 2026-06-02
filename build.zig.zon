@@ -1,0 +1,26 @@
+.{
+    .name = .ctt,
+    .version = "0.1.0",
+    .fingerprint = 0xa9eba5bc8933b379,
+    .minimum_zig_version = "0.16.0",
+    .dependencies = .{
+        .vaxis = .{
+            .url = "https://github.com/rockorager/libvaxis/archive/refs/heads/main.tar.gz",
+            .hash = "vaxis-0.6.0-BWNV_HHwCQB451KS7A8SMykALblPmGwHnzSfiJHjN3_9",
+        },
+        .zqlite = .{
+            .url = "https://github.com/karlseguin/zqlite.zig/archive/refs/heads/master.tar.gz",
+            .hash = "zqlite-0.0.1-RWLaY64xnAAxsD2YNT8QqPMJUuaFv2GOzFRR4aGypJv3",
+        },
+        .clap = .{
+            .url = "https://github.com/Hejsil/zig-clap/archive/refs/heads/master.tar.gz",
+            .hash = "clap-0.12.0-oBajB9noAQCFiI2syvjiZf6dENWUBFPWMEzdEPr99ZVx",
+        },
+    },
+    .paths = .{
+        "build.zig",
+        "build.zig.zon",
+        "src",
+        "tests",
+    },
+}
