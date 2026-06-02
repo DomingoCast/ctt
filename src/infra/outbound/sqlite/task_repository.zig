@@ -187,6 +187,7 @@ pub const SqliteTaskRepository = struct {
         while (stmt.step() catch |e| return mapErr(e)) {
             const row = zqlite.Row{ .stmt = stmt };
             const task = rowToTask(a, row) catch |e| return mapErr(e);
+            errdefer freeTask(a, task);
 
             // Apply status filter in Zig (derived field).
             if (f.status) |wanted| {
@@ -218,6 +219,10 @@ pub const SqliteTaskRepository = struct {
     ) d.ports.TaskRepository.Error!d.Task {
         const self: *SqliteTaskRepository = @ptrCast(@alignCast(p));
         const conn = self.db.conn;
+
+        // Wrap multi-field patches in a transaction so partial writes can't survive a failure.
+        conn.execNoArgs("BEGIN") catch |e| return mapErr(e);
+        errdefer conn.execNoArgs("ROLLBACK") catch {};
 
         // Apply each non-null field as a separate UPDATE to keep code simple.
         if (patch.title) |v| {
@@ -254,6 +259,8 @@ pub const SqliteTaskRepository = struct {
                 conn.exec("UPDATE tasks SET issue_id = NULL, updated_at = datetime('now') WHERE id = ?", .{id.raw()}) catch |e| return mapErr(e);
             }
         }
+
+        conn.execNoArgs("COMMIT") catch |e| return mapErr(e);
 
         return (try getFn(p, a, id)) orelse error.NotFound;
     }
