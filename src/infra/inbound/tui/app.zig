@@ -1,5 +1,6 @@
 const std = @import("std");
 const vaxis = @import("vaxis");
+const view = @import("view.zig");
 
 const Event = union(enum) {
     key_press: vaxis.Key,
@@ -41,8 +42,7 @@ pub fn run(
             .winsize => |ws| try vx.resize(alloc, tty.writer(), ws),
         }
         const win = vx.window();
-        win.clear();
-        _ = win.printSegment(.{ .text = "ctt \u{2014} press q to quit" }, .{});
+        view.render(win, &.{}, .{}); // empty views; will get populated in Task 8.3
         try vx.render(tty.writer());
     }
 }
