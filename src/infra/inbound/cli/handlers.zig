@@ -78,12 +78,27 @@ fn renderJson(views: []const app.TaskView, writer: anytype) !void {
     try writer.writeAll("[");
     for (views, 0..) |v, i| {
         if (i > 0) try writer.writeAll(",");
-        try writer.print(
-            "{{\"id\":{d},\"title\":\"{s}\",\"status\":\"{s}\",\"archived\":{}}}",
-            .{ v.task.id.raw(), v.task.title, @tagName(v.status), v.task.archived },
-        );
+        try writer.print("{{\"id\":{d},\"title\":", .{v.task.id.raw()});
+        try writeJsonString(writer, v.task.title);
+        try writer.print(",\"status\":\"{s}\",\"archived\":{}}}", .{ @tagName(v.status), v.task.archived });
     }
     try writer.writeAll("]\n");
+}
+
+fn writeJsonString(writer: anytype, s: []const u8) !void {
+    try writer.writeByte('"');
+    for (s) |c| {
+        switch (c) {
+            '"' => try writer.writeAll("\\\""),
+            '\\' => try writer.writeAll("\\\\"),
+            '\n' => try writer.writeAll("\\n"),
+            '\r' => try writer.writeAll("\\r"),
+            '\t' => try writer.writeAll("\\t"),
+            0x00...0x08, 0x0b, 0x0c, 0x0e...0x1f => try writer.print("\\u{x:0>4}", .{c}),
+            else => try writer.writeByte(c),
+        }
+    }
+    try writer.writeByte('"');
 }
 
 fn handleShow(a: std.mem.Allocator, uc: *UseCases, args: args_mod.ShowArgs, writer: anytype) !void {
@@ -349,4 +364,37 @@ test "handleShow prints no task message for missing id" {
     try handleShow(a, &uc, .{ .id = 999, .json = false }, &w.writer);
 
     try std.testing.expectEqualStrings("no task #999\n", w.writer.buffered());
+}
+
+test "renderJson escapes quotes, backslashes, and control chars" {
+    const a = std.testing.allocator;
+    var w: std.Io.Writer.Allocating = .init(a);
+    defer w.deinit();
+
+    const view = app.TaskView{
+        .task = .{
+            .id = @enumFromInt(1),
+            .title = "say \"hi\"\nC:\\path\there",
+            .branch_hint = null,
+            .worktree = null,
+            .pr = null,
+            .issue = null,
+            .archived = false,
+            .notes = null,
+            .created_at = .{ .unix_secs = 0 },
+            .updated_at = .{ .unix_secs = 0 },
+        },
+        .status = .todo,
+    };
+
+    try renderJson(&[_]app.TaskView{view}, &w.writer);
+
+    // Parse the rendered JSON to verify it's valid and the title round-trips.
+    const parsed = try std.json.parseFromSlice(std.json.Value, a, w.writer.buffered(), .{});
+    defer parsed.deinit();
+
+    const arr = parsed.value.array;
+    try std.testing.expectEqual(@as(usize, 1), arr.items.len);
+    const title = arr.items[0].object.get("title").?.string;
+    try std.testing.expectEqualStrings("say \"hi\"\nC:\\path\there", title);
 }
