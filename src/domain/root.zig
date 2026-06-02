@@ -21,4 +21,6 @@ pub const NewTask            = @import("entities/task.zig").NewTask;
 pub const TaskPatch          = @import("entities/task.zig").TaskPatch;
 pub const TaskFilter         = @import("entities/task.zig").TaskFilter;
 
-test { _ = @import("entities/task.zig"); }
+pub const derive_status = @import("services/status_derive.zig").derive;
+
+test { _ = @import("entities/task.zig"); _ = @import("services/status_derive.zig"); }
