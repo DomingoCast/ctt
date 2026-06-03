@@ -84,7 +84,10 @@ test "GetContext returns task and handoffs" {
     const uc = GetContext{ .tasks = task_repo, .handoffs = handoff_repo };
     const maybe_ctx = try uc.execute(a, task_id, null);
     const ctx = maybe_ctx orelse return error.ExpectedContext;
-    defer a.free(ctx.handoffs);
+    defer {
+        for (ctx.handoffs) |e| a.free(e.body);
+        a.free(ctx.handoffs);
+    }
     try std.testing.expectEqualStrings("do work", ctx.task.title);
     try std.testing.expectEqual(@as(usize, 1), ctx.handoffs.len);
     try std.testing.expectEqualStrings("checkpoint", ctx.handoffs[0].body);

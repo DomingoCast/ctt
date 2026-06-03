@@ -20,7 +20,10 @@ test "ListHandoffs returns entries newest first" {
     _ = try repo.append(a, .{ .task_id = task_id, .body = "second" }, fake_c.interface().now());
     const uc = ListHandoffs{ .handoffs = repo };
     const entries = try uc.execute(a, task_id, null);
-    defer a.free(entries);
+    defer {
+        for (entries) |e| a.free(e.body);
+        a.free(entries);
+    }
     try std.testing.expectEqual(@as(usize, 2), entries.len);
     // newest first
     try std.testing.expectEqualStrings("second", entries[0].body);
@@ -39,6 +42,9 @@ test "ListHandoffs respects limit" {
     _ = try repo.append(a, .{ .task_id = task_id, .body = "c" }, fake_c.interface().now());
     const uc = ListHandoffs{ .handoffs = repo };
     const entries = try uc.execute(a, task_id, 2);
-    defer a.free(entries);
+    defer {
+        for (entries) |e| a.free(e.body);
+        a.free(entries);
+    }
     try std.testing.expectEqual(@as(usize, 2), entries.len);
 }

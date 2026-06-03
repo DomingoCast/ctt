@@ -51,7 +51,10 @@ pub const FakeHandoffRepo = struct {
     fn listFn(p: *anyopaque, a: std.mem.Allocator, task_id: d.ids.TaskId, limit: ?usize) d.ports.HandoffRepository.Error![]d.HandoffEntry {
         const self: *FakeHandoffRepo = @ptrCast(@alignCast(p));
         var out: std.ArrayList(d.HandoffEntry) = .empty;
-        errdefer out.deinit(a);
+        errdefer {
+            for (out.items) |e| a.free(e.body);
+            out.deinit(a);
+        }
         // newest first (reverse order)
         var i = self.entries.items.len;
         var count: usize = 0;
@@ -60,19 +63,33 @@ pub const FakeHandoffRepo = struct {
             const e = self.entries.items[i];
             if (e.task_id != task_id) continue;
             if (limit) |lim| { if (count >= lim) break; }
-            out.append(a, e) catch return error.OutOfMemory;
+            const body_owned = a.dupe(u8, e.body) catch return error.OutOfMemory;
+            out.append(a, .{
+                .id = e.id,
+                .task_id = e.task_id,
+                .body = body_owned,
+                .created_at = e.created_at,
+            }) catch return error.OutOfMemory;
             count += 1;
         }
         return out.toOwnedSlice(a) catch return error.OutOfMemory;
     }
 
-    fn latestFn(p: *anyopaque, _: std.mem.Allocator, task_id: d.ids.TaskId) d.ports.HandoffRepository.Error!?d.HandoffEntry {
+    fn latestFn(p: *anyopaque, a: std.mem.Allocator, task_id: d.ids.TaskId) d.ports.HandoffRepository.Error!?d.HandoffEntry {
         const self: *FakeHandoffRepo = @ptrCast(@alignCast(p));
         var i = self.entries.items.len;
         while (i > 0) {
             i -= 1;
             const e = self.entries.items[i];
-            if (e.task_id == task_id) return e;
+            if (e.task_id == task_id) {
+                const body_owned = a.dupe(u8, e.body) catch return error.OutOfMemory;
+                return .{
+                    .id = e.id,
+                    .task_id = e.task_id,
+                    .body = body_owned,
+                    .created_at = e.created_at,
+                };
+            }
         }
         return null;
     }
