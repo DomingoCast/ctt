@@ -106,6 +106,9 @@ pub const FakeTaskRepo = struct {
         if (patch.issue_id) |maybe_iss| {
             existing.issue = if (maybe_iss) |iss_id| self.issues.get(iss_id.raw()) else null;
         }
+        if (patch.session) |maybe_s| {
+            existing.session = maybe_s;
+        }
         return existing.*;
     }
 
