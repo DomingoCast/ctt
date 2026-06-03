@@ -67,6 +67,8 @@ pub fn build(a: std.mem.Allocator, inp: Inputs) BuildError!ResumeCommand {
         inner = try std.mem.replaceOwned(u8, a, fresh_tmpl, "{{context_file}}", context);
         break :blk .fresh_with_context;
     };
+    // Free `inner` if any subsequent step fails before the caller takes ownership.
+    errdefer a.free(inner);
 
     // 5. Wrap with spawn template if present.
     const command: []u8 = if (inp.spawn_wrapper) |wrapper| blk: {
