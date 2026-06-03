@@ -290,10 +290,14 @@ fn handleResume(a: std.mem.Allocator, uc: *UseCases, args: args_mod.ResumeArgs, 
     const dir: []const u8 = if (std.c.getenv("XDG_RUNTIME_DIR")) |p| std.mem.span(p) else "/tmp";
     var ts: std.c.timespec = undefined;
     _ = std.c.clock_gettime(std.c.CLOCK.REALTIME, &ts);
-    const path = try std.fmt.allocPrint(a, "{s}/ctt-handoff-{d}-{d}.md", .{ dir, args.id, ts.sec });
+    const path = try std.fmt.allocPrint(a, "{s}/ctt-handoff-{d}-{d}-{d}.md", .{ dir, args.id, ts.sec, ts.nsec });
     defer a.free(path);
     const body: []const u8 = if (ctx.handoffs.len > 0) ctx.handoffs[0].body else "";
     try writeContextFile(uc.io, path, body);
+    // Always cleanup, even on --print: users who want to actually invoke the
+    // rendered command should re-run without --print so we re-create the temp
+    // file for the spawn. --print is a debug aid, not a copy-paste recipe.
+    defer std.Io.Dir.deleteFileAbsolute(uc.io, path) catch {};
 
     const cmd = app.BuildResumeCommand.build(a, .{
         .templates = uc.templates_lookup,
@@ -327,7 +331,12 @@ fn handleResume(a: std.mem.Allocator, uc: *UseCases, args: args_mod.ResumeArgs, 
 fn writeContextFile(io: std.Io, path: []const u8, body: []const u8) !void {
     // Use Dir.createFileAbsolute (path is always absolute: /tmp/... or $XDG_RUNTIME_DIR/...)
     // then write the body and close. Mirrors the pattern from infra/outbound/config/loader.zig.
-    var file = try std.Io.Dir.createFileAbsolute(io, path, .{ .truncate = true });
+    // permissions=0o600 so only the owner can read the handoff body (which may contain
+    // sensitive session context).
+    var file = try std.Io.Dir.createFileAbsolute(io, path, .{
+        .truncate = true,
+        .permissions = @enumFromInt(0o600),
+    });
     defer file.close(io);
     try file.writeStreamingAll(io, body);
 }
