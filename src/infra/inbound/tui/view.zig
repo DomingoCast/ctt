@@ -249,12 +249,22 @@ pub fn renderDetail(
         if (row >= sub.height -| 1) break;
         var time_buf: [16]u8 = undefined;
         const rel = card_layout.formatRelativeTime(&time_buf, h.created_at.unix_secs, now_unix);
-        // Body left-aligned
-        _ = sub.printSegment(.{ .text = h.body, .style = meta_style }, .{ .row_offset = row, .col_offset = 4 });
-        // Right-aligned relative time
-        const rel_col: u16 = if (sub.width > rel.len + 4) sub.width - @as(u16, @intCast(rel.len)) - 2 else 4;
-        _ = sub.printSegment(.{ .text = rel, .style = meta_style }, .{ .row_offset = row, .col_offset = rel_col });
-        row += 1;
+
+        // Print body line-by-line, advancing `row` per line
+        var body_iter = std.mem.splitScalar(u8, h.body, '\n');
+        var first_line = true;
+        while (body_iter.next()) |line| {
+            if (row >= sub.height -| 1) break;
+            _ = sub.printSegment(.{ .text = line, .style = meta_style }, .{ .row_offset = row, .col_offset = 4 });
+            if (first_line) {
+                // Right-aligned relative time on the first line only
+                const rel_col: u16 = if (sub.width > rel.len + 4) sub.width - @as(u16, @intCast(rel.len)) - 2 else 4;
+                _ = sub.printSegment(.{ .text = rel, .style = meta_style }, .{ .row_offset = row, .col_offset = rel_col });
+                first_line = false;
+            }
+            row += 1;
+        }
+
         if (row < sub.height -| 1) {
             _ = sub.printSegment(.{ .text = "╾──╼", .style = meta_style }, .{ .row_offset = row, .col_offset = 4 });
             row += 1;
