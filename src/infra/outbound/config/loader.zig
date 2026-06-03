@@ -57,6 +57,9 @@ pub const LoadError = error{
 
 /// Loads config.json from the given absolute path.
 /// The returned `Parsed(Config)` must be `.deinit()`-ed by the caller.
+/// All `[]const u8` values inside the returned `Config` (including provider
+/// template strings, repo paths, etc.) are arena-owned by the `Parsed`;
+/// callers must not store slices past `parsed.deinit()`.
 pub fn load(io: std.Io, a: std.mem.Allocator, path: []const u8) LoadError!std.json.Parsed(Config) {
     const text = std.Io.Dir.readFileAlloc(
         std.Io.Dir.cwd(),
@@ -70,13 +73,22 @@ pub fn load(io: std.Io, a: std.mem.Allocator, path: []const u8) LoadError!std.js
     };
     defer a.free(text);
 
-    return std.json.parseFromSlice(Config, a, text, .{
+    const parsed = std.json.parseFromSlice(Config, a, text, .{
         .allocate = .alloc_always,
         .ignore_unknown_fields = true,
     }) catch |e| return switch (e) {
         error.OutOfMemory => error.OutOfMemory,
         else => error.BadFormat,
     };
+
+    if (parsed.value.providers.default) |name| {
+        if (parsed.value.providers.templates.map.get(name) == null) {
+            parsed.deinit();
+            return error.BadFormat;
+        }
+    }
+
+    return parsed;
 }
 
 /// Loads the Linear API token.
@@ -288,4 +300,18 @@ test "minimal config has empty templates and null defaults" {
     try std.testing.expect(parsed.value.ui.spawn == null);
     const tmpl_size: usize = parsed.value.providers.templates.map.count();
     try std.testing.expectEqual(@as(usize, 0), tmpl_size);
+}
+
+test "load rejects providers.default that is not in providers.templates" {
+    var tmp = std.testing.tmpDir(.{});
+    defer tmp.cleanup();
+
+    const io = std.testing.io;
+    try writeTmpFile(io, tmp.dir, "c.json",
+        \\{"db_path":"/x","repos":[],"providers":{"default":"missing"}}
+    );
+    const path = try tmpRealPath(io, std.testing.allocator, tmp.dir, "c.json");
+    defer std.testing.allocator.free(path);
+
+    try std.testing.expectError(error.BadFormat, load(io, std.testing.allocator, path));
 }
