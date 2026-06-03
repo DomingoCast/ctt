@@ -52,7 +52,7 @@ test "open creates db file and applies v1 migration" {
     var db = try Db.open(path_z);
     defer db.close();
 
-    // Verify all 5 tables exist
+    // Verify all 6 tables exist
     var rows = try db.conn.rows("SELECT name FROM sqlite_master WHERE type='table' ORDER BY name", .{});
     defer rows.deinit();
 
@@ -82,15 +82,18 @@ test "v2 migration adds session columns and handoffs table" {
     defer rows.deinit();
     try std.testing.expect(rows.next() != null);
 
-    // session_provider column exists on tasks
+    // session_provider and session_id columns exist on tasks
     var col_rows = try db.conn.rows("PRAGMA table_info(tasks)", .{});
     defer col_rows.deinit();
     var found_sp = false;
+    var found_si = false;
     while (col_rows.next()) |r| {
         const name = r.text(1);
         if (std.mem.eql(u8, name, "session_provider")) found_sp = true;
+        if (std.mem.eql(u8, name, "session_id")) found_si = true;
     }
     try std.testing.expect(found_sp);
+    try std.testing.expect(found_si);
 }
 
 test "foreign keys are enforced (CASCADE works)" {
