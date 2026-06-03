@@ -42,7 +42,7 @@ pub fn run(
     try loop.start();
     defer loop.stop();
 
-    var stop_flag = std.atomic.Value(bool){ .raw = false };
+    var stop_flag = std.atomic.Value(bool).init(false);
     var ticker = try tick.TickThread(@TypeOf(loop), Event).start(&loop, &stop_flag, uc.refresh_interval_ms);
     defer ticker.join();
 
@@ -253,6 +253,9 @@ fn submitModal(a: std.mem.Allocator, uc: *UseCases, state: *state_mod.State) !vo
 
 fn doRefresh(a: std.mem.Allocator, uc: *UseCases, state: *state_mod.State, force: bool) !void {
     // mtime guard — skip work if DB unchanged and not forced
+    // pending_mtime is held here and committed only after full success so that a
+    // failure mid-refresh does not advance the cache and suppress future retries.
+    var pending_mtime: ?i128 = null;
     if (uc.db_path.len > 0) {
         const stat_ok_mtime = blk: {
             const file = std.Io.Dir.openFileAbsolute(uc.io, uc.db_path, .{}) catch break :blk null;
@@ -263,7 +266,7 @@ fn doRefresh(a: std.mem.Allocator, uc: *UseCases, state: *state_mod.State, force
         if (stat_ok_mtime) |current_mtime| {
             const cm: i128 = @intCast(current_mtime);
             if (!card_layout.shouldRefresh(state.last_db_mtime, cm, force)) return;
-            state.last_db_mtime = cm;
+            pending_mtime = cm; // hold; don't commit until full success
         }
     }
 
@@ -272,6 +275,7 @@ fn doRefresh(a: std.mem.Allocator, uc: *UseCases, state: *state_mod.State, force
         state.refreshing = false;
         try state.setMessage("refresh failed");
         std.log.scoped(.tui).warn("refresh: {s}", .{@errorName(err)});
+        // pending_mtime intentionally not committed on failure
         return;
     };
     defer report.deinit(a);
@@ -281,10 +285,15 @@ fn doRefresh(a: std.mem.Allocator, uc: *UseCases, state: *state_mod.State, force
         state.refreshing = false;
         try state.setMessage("list failed");
         std.log.scoped(.tui).warn("list_tasks: {s}", .{@errorName(err)});
+        // pending_mtime intentionally not committed on failure
         return;
     };
     state.setViews(fresh);
     state.refreshing = false;
+
+    // Commit mtime only after both operations succeeded so a future tick can
+    // retry on the same mtime if the refresh was interrupted above.
+    if (pending_mtime) |m| state.last_db_mtime = m;
 
     const msg = try std.fmt.allocPrint(a, "refresh: +{d} tasks · +{d} prs · +{d} issues", .{
         report.tasks_created,
