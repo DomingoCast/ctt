@@ -28,6 +28,9 @@ pub const Db = struct {
         if (version < 1) {
             try self.conn.execNoArgs(migrations.v1);
         }
+        if (version < 2) {
+            try self.conn.execNoArgs(migrations.v2);
+        }
     }
 };
 
@@ -55,7 +58,38 @@ test "open creates db file and applies v1 migration" {
     var seen: u8 = 0;
     while (rows.next()) |_| seen += 1;
 
-    try std.testing.expect(seen >= 5);
+    try std.testing.expect(seen >= 6);   // tasks, repos, worktrees, prs, issues, handoffs
+}
+
+test "v2 migration adds session columns and handoffs table" {
+    var tmp = std.testing.tmpDir(.{});
+    defer tmp.cleanup();
+
+    const path_z = try tmpDbPath(std.testing.allocator, tmp, "v2.sqlite");
+    defer std.testing.allocator.free(path_z);
+
+    var db = try Db.open(path_z);
+    defer db.close();
+
+    // user_version is 2
+    var ver_row = (try db.conn.row("PRAGMA user_version", .{})).?;
+    defer ver_row.deinit();
+    try std.testing.expectEqual(@as(i64, 2), ver_row.int(0));
+
+    // handoffs table exists
+    var rows = try db.conn.rows("SELECT name FROM sqlite_master WHERE type='table' AND name='handoffs'", .{});
+    defer rows.deinit();
+    try std.testing.expect(rows.next() != null);
+
+    // session_provider column exists on tasks
+    var col_rows = try db.conn.rows("PRAGMA table_info(tasks)", .{});
+    defer col_rows.deinit();
+    var found_sp = false;
+    while (col_rows.next()) |r| {
+        const name = r.text(1);
+        if (std.mem.eql(u8, name, "session_provider")) found_sp = true;
+    }
+    try std.testing.expect(found_sp);
 }
 
 test "re-opening an existing db is idempotent (no double migration)" {

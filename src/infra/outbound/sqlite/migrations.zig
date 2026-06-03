@@ -54,3 +54,17 @@ pub const v1: [*:0]const u8 =
     \\);
     \\PRAGMA user_version = 1;
 ;
+
+pub const v2: [*:0]const u8 =
+    \\ALTER TABLE tasks ADD COLUMN session_provider TEXT;
+    \\ALTER TABLE tasks ADD COLUMN session_id TEXT;
+    \\CREATE TABLE IF NOT EXISTS handoffs (
+    \\    id INTEGER PRIMARY KEY,
+    \\    task_id INTEGER NOT NULL REFERENCES tasks(id) ON DELETE CASCADE,
+    \\    body TEXT NOT NULL,
+    \\    created_at INTEGER NOT NULL
+    \\);
+    \\CREATE INDEX IF NOT EXISTS handoffs_task_created
+    \\    ON handoffs(task_id, created_at DESC);
+    \\PRAGMA user_version = 2;
+;
