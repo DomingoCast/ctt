@@ -32,6 +32,9 @@ pub const Db = struct {
         if (version < 2) {
             try self.conn.execNoArgs(migrations.v2);
         }
+        if (version < 3) {
+            try self.conn.execNoArgs(migrations.v3);
+        }
     }
 };
 
@@ -72,10 +75,10 @@ test "v2 migration adds session columns and handoffs table" {
     var db = try Db.open(path_z);
     defer db.close();
 
-    // user_version is 2
+    // user_version is 3 (v3 also applied)
     var ver_row = (try db.conn.row("PRAGMA user_version", .{})).?;
     defer ver_row.deinit();
-    try std.testing.expectEqual(@as(i64, 2), ver_row.int(0));
+    try std.testing.expectEqual(@as(i64, 3), ver_row.int(0));
 
     // handoffs table exists
     var rows = try db.conn.rows("SELECT name FROM sqlite_master WHERE type='table' AND name='handoffs'", .{});
@@ -94,6 +97,28 @@ test "v2 migration adds session columns and handoffs table" {
     }
     try std.testing.expect(found_sp);
     try std.testing.expect(found_si);
+}
+
+test "v3 migration adds project_path column" {
+    var tmp = std.testing.tmpDir(.{});
+    defer tmp.cleanup();
+    const path_z = try tmpDbPath(std.testing.allocator, tmp, "v3.sqlite");
+    defer std.testing.allocator.free(path_z);
+
+    var db = try Db.open(path_z);
+    defer db.close();
+
+    var ver_row = (try db.conn.row("PRAGMA user_version", .{})).?;
+    defer ver_row.deinit();
+    try std.testing.expectEqual(@as(i64, 3), ver_row.int(0));
+
+    var col_rows = try db.conn.rows("PRAGMA table_info(tasks)", .{});
+    defer col_rows.deinit();
+    var found = false;
+    while (col_rows.next()) |r| {
+        if (std.mem.eql(u8, r.text(1), "project_path")) found = true;
+    }
+    try std.testing.expect(found);
 }
 
 test "foreign keys are enforced (CASCADE works)" {

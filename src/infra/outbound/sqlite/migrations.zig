@@ -70,3 +70,10 @@ pub const v2: [*:0]const u8 =
     \\PRAGMA user_version = 2;
     \\COMMIT;
 ;
+
+pub const v3: [*:0]const u8 =
+    \\BEGIN;
+    \\ALTER TABLE tasks ADD COLUMN project_path TEXT;
+    \\PRAGMA user_version = 3;
+    \\COMMIT;
+;
