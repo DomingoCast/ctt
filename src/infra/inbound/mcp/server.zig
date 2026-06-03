@@ -676,6 +676,10 @@ fn renderTaskJson(t: d.Task, writer: *std.Io.Writer) !void {
         try jsonrpc.writeJsonString(writer, s.session_id);
         try writer.writeByte('}');
     }
+    if (t.project_path) |p| {
+        try writer.writeAll(",\"project_path\":");
+        try jsonrpc.writeJsonString(writer, p);
+    }
     try writer.writeByte('}');
 }
 
