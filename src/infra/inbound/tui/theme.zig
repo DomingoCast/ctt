@@ -72,7 +72,7 @@ fn parseHex(maybe_hex: ?[]const u8) ?RGB {
     return .{ .r = r, .g = g, .b = b };
 }
 
-test "dim halves channels" {
+test "dim scales channels to 60%" {
     const rgb = RGB{ .r = 100, .g = 200, .b = 250 };
     const d_rgb = rgb.dim();
     try std.testing.expectEqual(@as(u8, 60), d_rgb.r);

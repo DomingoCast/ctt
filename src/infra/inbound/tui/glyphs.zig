@@ -12,10 +12,10 @@ pub const GlyphSet = struct {
 
     pub const nerd = GlyphSet{
         .branch = "\u{ea68}",  // nf-cod-source_control
-        .repo   = "\u{ea83}",  // nf-cod-repo
+        .repo   = "\u{ea62}",  // nf-cod-repo
         .pr     = "\u{eaa3}",  // nf-cod-git_pull_request
         .issue  = "\u{eab2}",  // nf-cod-issues
-        .folder = "\u{ea83}",
+        .folder = "\u{ea83}",  // nf-cod-folder
         .ai     = "\u{ec1d}",  // nf-cod-robot
         .edit   = "\u{ea73}",  // nf-cod-edit
         .save   = "\u{eb4b}",  // nf-cod-save
