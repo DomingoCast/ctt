@@ -39,6 +39,7 @@ pub const AddArgs = struct {
     title: []const u8,
     branch: ?[]const u8 = null,
     issue: ?[]const u8 = null,
+    project: ?[]const u8 = null,
 };
 
 pub const UpdateArgs = struct {
@@ -169,6 +170,7 @@ pub fn freeCommand(a: std.mem.Allocator, cmd: Command) void {
             a.free(v.title);
             if (v.branch) |b| a.free(b);
             if (v.issue) |i| a.free(i);
+            if (v.project) |p| a.free(p);
         },
         .update => |v| {
             if (v.title) |t| a.free(t);
@@ -252,6 +254,7 @@ fn parseAdd(a: std.mem.Allocator, argv: []const [:0]u8) ParseError!Command {
     var got_title = false;
     errdefer if (result.branch) |b| a.free(b);
     errdefer if (result.issue) |iss| a.free(iss);
+    errdefer if (result.project) |p| a.free(p);
     errdefer if (got_title) a.free(result.title);
     var i: usize = 0;
     while (i < argv.len) : (i += 1) {
@@ -264,6 +267,10 @@ fn parseAdd(a: std.mem.Allocator, argv: []const [:0]u8) ParseError!Command {
             i += 1;
             if (i >= argv.len) return error.MissingArg;
             result.issue = try a.dupe(u8, argv[i]);
+        } else if (std.mem.eql(u8, arg, "--project")) {
+            i += 1;
+            if (i >= argv.len) return error.MissingArg;
+            result.project = try a.dupe(u8, argv[i]);
         } else if (!got_title) {
             result.title = try a.dupe(u8, arg);
             got_title = true;
@@ -842,4 +849,17 @@ test "parse 'context 9 --json --handoffs 5'" {
     try std.testing.expectEqual(@as(i64, 9), cmd.context.id);
     try std.testing.expect(cmd.context.json);
     try std.testing.expectEqual(@as(?u32, 5), cmd.context.handoff_limit);
+}
+
+test "parse 'add foo --project /tmp/p'" {
+    const args = [_][:0]u8{
+        @constCast(@as([:0]const u8, "add")),
+        @constCast(@as([:0]const u8, "foo")),
+        @constCast(@as([:0]const u8, "--project")),
+        @constCast(@as([:0]const u8, "/tmp/p")),
+    };
+    const cmd = try parseFromArgs(std.testing.allocator, &args);
+    defer freeCommand(std.testing.allocator, cmd);
+    try std.testing.expectEqualStrings("foo", cmd.add.title);
+    try std.testing.expectEqualStrings("/tmp/p", cmd.add.project.?);
 }

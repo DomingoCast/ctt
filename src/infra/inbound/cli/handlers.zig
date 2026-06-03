@@ -43,6 +43,7 @@ fn handleAdd(a: std.mem.Allocator, uc: *UseCases, args: args_mod.AddArgs, writer
     const t = try uc.add_todo.execute(a, .{
         .title = args.title,
         .branch_hint = branch_name,
+        .project_path = args.project,
     });
     try writer.print("created task #{d}: {s}\n", .{ t.id.raw(), t.title });
 }
@@ -547,7 +548,7 @@ test "handleAdd prints created task line" {
     var w: std.Io.Writer.Allocating = .init(a);
     defer w.deinit();
 
-    try handleAdd(a, &uc, .{ .title = "hello world", .branch = null, .issue = null }, &w.writer);
+    try handleAdd(a, &uc, .{ .title = "hello world", .branch = null, .issue = null, .project = null }, &w.writer);
 
     try std.testing.expectEqualStrings("created task #1: hello world\n", w.writer.buffered());
 }

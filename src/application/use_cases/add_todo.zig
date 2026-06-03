@@ -5,6 +5,7 @@ pub const AddTodoInput = struct {
     title: []const u8,
     branch_hint: ?d.BranchName = null,
     notes: ?[]const u8 = null,
+    project_path: ?[]const u8 = null,
 };
 
 pub const AddTodo = struct {
@@ -15,6 +16,7 @@ pub const AddTodo = struct {
             .title = input.title,
             .branch_hint = input.branch_hint,
             .notes = input.notes,
+            .project_path = input.project_path,
         });
     }
 };
