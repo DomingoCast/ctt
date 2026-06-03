@@ -3,6 +3,9 @@ const vaxis = @import("vaxis");
 const d = @import("domain");
 const app = @import("application");
 const state_mod = @import("state.zig");
+const theme_mod = @import("theme.zig");
+const glyphs_mod = @import("glyphs.zig");
+const card_layout = @import("card_layout.zig");
 
 pub const Selection = struct {
     column: u2 = 0, // 0..3
@@ -17,6 +20,10 @@ const COLUMNS = [_]Column{
     .{ .title = "DONE", .status = .done },
 };
 
+// Double-rounded border glyphs (╭╮╯╰ → ╔╗╝╚ style, but rounded: use ╔═╗║╝╚)
+// Using proper double-line box drawing characters.
+const double_border_glyphs: [6][]const u8 = .{ "╔", "═", "╗", "║", "╝", "╚" };
+
 /// Return the first byte of `s` as a single-char slice, or "?" if empty.
 /// Used as fallback icon when provider has no configured icon.
 fn oneCharUpper(s: []const u8) []const u8 {
@@ -24,16 +31,114 @@ fn oneCharUpper(s: []const u8) []const u8 {
     return s[0..1];
 }
 
+/// Render a single card at (x_off, y_off) inside `col_win`.
+/// Returns the height consumed (always 4: top border + title + footer + bottom border).
+fn renderCard(
+    col_win: vaxis.Window,
+    x_off: i17,
+    y_off: i17,
+    width: u16,
+    v: app.TaskView,
+    status: d.Status,
+    is_selected: bool,
+    colors: theme_mod.ColorScheme,
+    glyphs: glyphs_mod.GlyphSet,
+    templates_lookup: *const fn ([]const u8) ?app.BuildResumeCommand.ProviderTemplate,
+    now_unix: i64,
+) u16 {
+    const accent = colors.forColumn(status);
+    const border_color: theme_mod.RGB = if (is_selected) accent else accent.dim();
+    const border_style: vaxis.Cell.Style = .{ .fg = border_color.toVaxis() };
+
+    const border_glyphs: vaxis.Window.BorderOptions.Glyphs = if (is_selected)
+        .{ .custom = double_border_glyphs }
+    else
+        .single_rounded;
+
+    const sub = col_win.child(.{
+        .x_off = x_off,
+        .y_off = y_off,
+        .width = width,
+        .height = 4,
+        .border = .{
+            .where = .all,
+            .glyphs = border_glyphs,
+            .style = border_style,
+        },
+    });
+
+    // === Title row (row 0 inside the card's content area) ===
+    var col: u16 = 0;
+
+    // Provider icon (if session exists)
+    if (v.task.session) |sess| {
+        const icon: []const u8 = if (templates_lookup(sess.provider)) |tmpl|
+            (tmpl.icon orelse glyphs.ai)
+        else
+            glyphs.ai;
+        if (icon.len > 0) {
+            _ = sub.printSegment(
+                .{ .text = icon, .style = .{ .fg = colors.metadata.toVaxis() } },
+                .{ .row_offset = 0, .col_offset = col },
+            );
+            col += @intCast(icon.len + 1);
+        }
+    }
+
+    // Status pip
+    const pip: []const u8 = if (is_selected) "◉" else "●";
+    _ = sub.printSegment(
+        .{ .text = pip, .style = .{ .fg = accent.toVaxis() } },
+        .{ .row_offset = 0, .col_offset = col },
+    );
+    col += 2; // pip glyph (1 cell visual) + 1 space
+
+    // Title (truncated)
+    const inner_width: u16 = if (width > 2) width - 2 else 0;
+    const title_avail: usize = if (inner_width > col) inner_width - col else 0;
+    const title_slice = card_layout.truncateWithEllipsis(v.task.title, title_avail);
+    _ = sub.printSegment(
+        .{ .text = title_slice, .style = .{ .fg = colors.title.toVaxis() } },
+        .{ .row_offset = 0, .col_offset = col },
+    );
+    if (title_slice.len < v.task.title.len) {
+        const ell_col: u16 = col + @as(u16, @intCast(title_slice.len));
+        _ = sub.printSegment(
+            .{ .text = "…", .style = .{ .fg = colors.title.toVaxis() } },
+            .{ .row_offset = 0, .col_offset = ell_col },
+        );
+    }
+
+    // === Footer row (row 1) ===
+    var footer_out: [4]card_layout.FooterField = undefined;
+    var time_buf: [16]u8 = undefined;
+    const fields = card_layout.cardFooterFields(v.task, status, glyphs, now_unix, &footer_out, &time_buf);
+    var fcol: u16 = 0;
+    const meta_style: vaxis.Cell.Style = .{ .fg = colors.metadata.toVaxis() };
+    for (fields) |f| {
+        if (f.glyph.len > 0) {
+            _ = sub.printSegment(.{ .text = f.glyph, .style = meta_style }, .{ .row_offset = 1, .col_offset = fcol });
+            fcol += @intCast(f.glyph.len + 1);
+        }
+        _ = sub.printSegment(.{ .text = f.text, .style = meta_style }, .{ .row_offset = 1, .col_offset = fcol });
+        fcol += @intCast(f.text.len + 2);
+    }
+
+    return 4;
+}
+
 pub fn render(
     win: vaxis.Window,
     views: []const app.TaskView,
     sel: Selection,
+    state: *const state_mod.State,
     templates_lookup: *const fn ([]const u8) ?app.BuildResumeCommand.ProviderTemplate,
+    now_unix: i64,
 ) void {
     win.clear();
 
     const col_count: u16 = COLUMNS.len;
-    if (win.width < col_count * 12) {
+    if (win.width < col_count * 18) {
         _ = win.printSegment(.{ .text = "terminal too narrow" }, .{});
         return;
     }
@@ -41,46 +146,25 @@ pub fn render(
 
     for (COLUMNS, 0..) |col, col_idx| {
         const x_off: i17 = @intCast(col_idx * col_w);
-        const sub = win.child(.{
-            .x_off = x_off,
-            .width = col_w,
-            .border = .{ .where = .all },
-        });
+        const accent = state.colors.forColumn(col.status);
 
-        // Header
-        const header_style: vaxis.Cell.Style = .{ .bold = true };
-        _ = sub.printSegment(
-            .{ .text = col.title, .style = header_style },
-            .{ .row_offset = 0, .col_offset = 1 },
+        // Column header
+        _ = win.printSegment(
+            .{ .text = col.title, .style = .{ .bold = true, .fg = accent.toVaxis() } },
+            .{ .row_offset = 0, .col_offset = @intCast(x_off + 2) },
         );
 
         // Cards
-        var card_row: u16 = 2;
+        var card_y: i17 = 2;
         var item_idx: u32 = 0;
         for (views) |v| {
             if (v.status != col.status) continue;
             const is_sel = sel.column == col_idx and sel.row == item_idx;
-            const style: vaxis.Cell.Style = if (is_sel) .{ .reverse = true } else .{};
-
-            // Provider icon (G4): show before the title when a session handle is present.
-            var col_offset: u16 = 1;
-            if (v.task.session) |sess| {
-                const icon: []const u8 = if (templates_lookup(sess.provider)) |tmpl|
-                    (tmpl.icon orelse oneCharUpper(sess.provider))
-                else
-                    oneCharUpper(sess.provider);
-                _ = sub.printSegment(
-                    .{ .text = icon, .style = style },
-                    .{ .row_offset = card_row, .col_offset = col_offset },
-                );
-                col_offset += @intCast(icon.len + 1);
-            }
-
-            _ = sub.printSegment(
-                .{ .text = v.task.title, .style = style },
-                .{ .row_offset = card_row, .col_offset = col_offset },
+            const consumed = renderCard(
+                win, x_off, card_y, col_w, v, col.status, is_sel,
+                state.colors, state.glyphs, templates_lookup, now_unix,
             );
-            card_row += 1;
+            card_y += @intCast(consumed + 1); // +1 row spacing between cards
             item_idx += 1;
         }
     }

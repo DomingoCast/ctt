@@ -77,7 +77,9 @@ pub fn run(
         }
 
         const win = vx.window();
-        view.render(win, state.views, state.sel, uc.templates_lookup);
+        var now_ts: std.c.timespec = undefined;
+        _ = std.c.clock_gettime(std.c.CLOCK.REALTIME, &now_ts);
+        view.render(win, state.views, state.sel, &state, uc.templates_lookup, now_ts.sec);
 
         // Footer with last message
         if (state.last_message) |msg| {
