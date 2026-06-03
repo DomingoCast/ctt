@@ -68,8 +68,10 @@ pub const State = struct {
     views: []app.TaskView,
     sel: view.Selection = .{},
     mode: Mode = .normal,
+    /// True while doRefresh is in flight; consumed by the footer pulse (Phase F).
     refreshing: bool = false,
     last_db_mtime: i128 = 0,
+    /// Animation frame for the footer pulse indicator (rendered by Phase F).
     spinner_frame: u8 = 0,
     glyphs: glyphs_mod.GlyphSet = glyphs_mod.GlyphSet.nerd,
     colors: theme_mod.ColorScheme = theme_mod.ColorScheme.default,
