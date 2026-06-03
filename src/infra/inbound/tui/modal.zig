@@ -1,6 +1,7 @@
 const std = @import("std");
 const vaxis = @import("vaxis");
 const state_mod = @import("state.zig");
+const repo_match = @import("repo_match.zig");
 
 /// Render the handoff text-area modal with rounded border + glyph + dim-hint treatment.
 pub fn renderHandoff(win: vaxis.Window, m: *const state_mod.HandoffModal, state: *const state_mod.State) void {
@@ -66,7 +67,20 @@ pub fn renderHandoff(win: vaxis.Window, m: *const state_mod.HandoffModal, state:
 
 pub fn renderAddTodo(win: vaxis.Window, modal: *const state_mod.AddTodoModal, state: *const state_mod.State) void {
     const modal_w: u16 = @min(60, win.width -| 8);
-    const modal_h: u16 = 10;
+
+    // Compute dropdown extra rows when project is focused and dropdown is open
+    const dropdown_extra: u16 = if (modal.focus == .project and modal.project_dropdown_open) blk: {
+        var mb: [repo_match.MAX_RESULTS]repo_match.Match = undefined;
+        const ms = repo_match.fuzzyMatch(state.cfg_repos, modal.project_buf.items, &mb);
+        const hup = modal.project_buf.items.len > 0 and !exactMatchInline(ms, modal.project_buf.items);
+        const rows: u16 = @intCast(ms.len + @as(usize, if (hup) 1 else 0));
+        if (rows == 0) break :blk 0;
+        break :blk rows + 2; // border
+    } else 0;
+
+    const base_h: u16 = 12; // header + 4 fields (2 rows each) + hint
+    const modal_h: u16 = @min(base_h + dropdown_extra, win.height -| 4);
+
     const x_off: i17 = @intCast((win.width - modal_w) / 2);
     const y_off: i17 = @intCast((win.height - modal_h) / 2);
 
@@ -92,6 +106,52 @@ pub fn renderAddTodo(win: vaxis.Window, modal: *const state_mod.AddTodoModal, st
     renderField(sub, "Title ", modal.title_buf.items, modal.focus == .title, 2);
     renderField(sub, "Branch", modal.branch_buf.items, modal.focus == .branch, 4);
     renderField(sub, "Issue ", modal.issue_buf.items, modal.focus == .issue, 6);
+    renderField(sub, "Project", modal.project_buf.items, modal.focus == .project, 8);
+
+    // Render inline dropdown when project field is focused and dropdown is open
+    if (modal.focus == .project and modal.project_dropdown_open) {
+        var match_buf: [repo_match.MAX_RESULTS]repo_match.Match = undefined;
+        const matches = repo_match.fuzzyMatch(state.cfg_repos, modal.project_buf.items, &match_buf);
+        const has_use_path = modal.project_buf.items.len > 0 and !exactMatchInline(matches, modal.project_buf.items);
+        const dropdown_rows: u16 = @intCast(matches.len + @as(usize, if (has_use_path) 1 else 0));
+        if (dropdown_rows > 0) {
+            const dd_w: u16 = sub.width -| 4;
+            const dd_h: u16 = dropdown_rows + 2;
+            const dd = sub.child(.{
+                .x_off = 2,
+                .y_off = 9,
+                .width = dd_w,
+                .height = dd_h,
+                .border = .{
+                    .where = .all,
+                    .glyphs = .single_rounded,
+                    .style = .{ .fg = state.colors.metadata.toVaxis() },
+                },
+            });
+            var row: u16 = 0;
+            for (matches, 0..) |m, i| {
+                const selected = i == modal.project_selection;
+                const style: vaxis.Cell.Style = if (selected)
+                    .{ .reverse = true, .fg = state.colors.title.toVaxis() }
+                else
+                    .{ .fg = state.colors.title.toVaxis() };
+                var line_buf: [256]u8 = undefined;
+                const line = std.fmt.bufPrint(&line_buf, "{s}  {s}", .{ m.name, m.path }) catch continue;
+                _ = dd.printSegment(.{ .text = line, .style = style }, .{ .row_offset = row, .col_offset = 2 });
+                row += 1;
+            }
+            if (has_use_path) {
+                const selected = modal.project_selection == matches.len;
+                const style: vaxis.Cell.Style = if (selected)
+                    .{ .reverse = true, .fg = state.colors.title.toVaxis() }
+                else
+                    .{ .fg = state.colors.metadata.toVaxis() };
+                var line_buf: [256]u8 = undefined;
+                const line = std.fmt.bufPrint(&line_buf, "Use path: \"{s}\"", .{modal.project_buf.items}) catch return;
+                _ = dd.printSegment(.{ .text = line, .style = style }, .{ .row_offset = row, .col_offset = 2 });
+            }
+        }
+    }
 
     const hint = "Tab next  Enter submit  Esc cancel";
     const hint_col: u16 = if (sub.width > hint.len + 4) sub.width - @as(u16, @intCast(hint.len)) - 2 else 2;
@@ -159,6 +219,13 @@ pub fn renderHelp(win: vaxis.Window, state: *const state_mod.State) void {
         }
         y += 1;
     }
+}
+
+fn exactMatchInline(matches: []const repo_match.Match, query: []const u8) bool {
+    for (matches) |m| {
+        if (std.mem.eql(u8, m.name, query) or std.mem.eql(u8, m.path, query)) return true;
+    }
+    return false;
 }
 
 fn renderField(win: vaxis.Window, label: []const u8, value: []const u8, focused: bool, row: u16) void {
