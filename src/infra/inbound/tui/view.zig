@@ -228,6 +228,12 @@ pub fn renderDetail(
         _ = sub.printSegment(.{ .text = line, .style = meta_style }, .{ .row_offset = row, .col_offset = 2 });
         row += 1;
     }
+    if (ds.task.project_path) |p| {
+        var buf: [256]u8 = undefined;
+        const line = std.fmt.bufPrint(&buf, "{s} Project  {s}", .{ state.glyphs.folder, p }) catch return;
+        _ = sub.printSegment(.{ .text = line, .style = meta_style }, .{ .row_offset = row, .col_offset = 2 });
+        row += 1;
+    }
     if (ds.task.pr) |pr| {
         var buf: [256]u8 = undefined;
         const line = std.fmt.bufPrint(&buf, "{s} PR       #{d} {s}", .{ state.glyphs.pr, pr.number, @tagName(pr.state) }) catch return;
