@@ -8,6 +8,8 @@ const d = @import("domain");
 const app = @import("application");
 const card_layout = @import("card_layout.zig");
 const tick = @import("tick.zig");
+const glyphs_mod = @import("glyphs.zig");
+const theme_mod = @import("theme.zig");
 
 const Event = union(enum) {
     key_press: vaxis.Key,
@@ -53,6 +55,10 @@ pub fn run(
 
     var state = state_mod.State.init(a);
     defer state.deinit();
+
+    state.glyphs = glyphs_mod.GlyphSet.select(uc.use_nerd_glyphs);
+    state.colors = theme_mod.ColorScheme.fromConfig(uc.color_scheme_cfg);
+    state.refresh_interval_ms = uc.refresh_interval_ms;
 
     // Initial load
     try doRefresh(a, uc, &state, true);

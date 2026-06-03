@@ -146,6 +146,10 @@ pub fn main(init: std.process.Init) !void {
                 .default_provider = cfg.providers.default,
                 .spawn_template = cfg.ui.spawn,
                 .io = io,
+                .refresh_interval_ms = cfg.ui.refresh_interval_ms,
+                .use_nerd_glyphs = cfg.ui.use_nerd_glyphs,
+                .color_scheme_cfg = cfg.ui.color_scheme,
+                .db_path = cfg.db_path,
             };
             try tui.run(a, io, init.environ_map, &tui_uc);
         },
