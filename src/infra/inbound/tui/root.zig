@@ -17,4 +17,5 @@ test {
     _ = @import("card_layout.zig");
     _ = @import("tick.zig");
     // app.zig requires a real TTY, so don't include it in the test block
+    _ = @import("repo_match.zig");
 }
