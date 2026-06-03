@@ -140,6 +140,12 @@ pub fn main(init: std.process.Init) !void {
                 .link = cli_uc.link,
                 .refresh = cli_uc.refresh,
                 .repos = repos,
+                .add_handoff = cli_uc.add_handoff,
+                .get_context = cli_uc.get_context,
+                .templates_lookup = lookupTemplate,
+                .default_provider = cfg.providers.default,
+                .spawn_template = cfg.ui.spawn,
+                .io = io,
             };
             try tui.run(a, io, init.environ_map, &tui_uc);
         },

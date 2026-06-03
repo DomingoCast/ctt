@@ -3,9 +3,29 @@ const app = @import("application");
 const view = @import("view.zig");
 const d = @import("domain");
 
-pub const Mode = enum { normal, add_todo_modal };
+pub const Mode = enum { normal, add_todo_modal, detail, handoff_modal };
 
 pub const ModalFocus = enum { title, branch, issue };
+
+pub const DetailState = struct {
+    task: d.Task,
+    handoffs: []d.HandoffEntry,
+
+    pub fn deinit(self: *DetailState, a: std.mem.Allocator) void {
+        for (self.handoffs) |h| a.free(h.body);
+        a.free(self.handoffs);
+        app.freeTask(a, self.task);
+    }
+};
+
+pub const HandoffModal = struct {
+    task_id: d.ids.TaskId,
+    body_buf: std.ArrayList(u8) = .empty,
+
+    pub fn deinit(self: *HandoffModal, a: std.mem.Allocator) void {
+        self.body_buf.deinit(a);
+    }
+};
 
 pub const AddTodoModal = struct {
     focus: ModalFocus = .title,
@@ -49,6 +69,8 @@ pub const State = struct {
     refreshing: bool = false,
     last_message: ?[]const u8 = null,
     add_todo_modal: AddTodoModal = .{},
+    detail: ?DetailState = null,
+    handoff_modal: ?HandoffModal = null,
 
     pub fn init(a: std.mem.Allocator) State {
         return .{ .allocator = a, .views = &.{} };
@@ -58,6 +80,8 @@ pub const State = struct {
         self.allocator.free(self.views);
         if (self.last_message) |m| self.allocator.free(m);
         self.add_todo_modal.deinit(self.allocator);
+        if (self.detail) |*ds| ds.deinit(self.allocator);
+        if (self.handoff_modal) |*hm| hm.deinit(self.allocator);
     }
 
     pub fn setViews(self: *State, new_views: []app.TaskView) void {

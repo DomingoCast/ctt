@@ -5,6 +5,7 @@ const state_mod = @import("state.zig");
 const modal_mod = @import("modal.zig");
 const UseCases = @import("use_cases.zig").UseCases;
 const d = @import("domain");
+const app = @import("application");
 
 const Event = union(enum) {
     key_press: vaxis.Key,
@@ -59,7 +60,7 @@ pub fn run(
         }
 
         const win = vx.window();
-        view.render(win, state.views, state.sel);
+        view.render(win, state.views, state.sel, uc.templates_lookup);
 
         // Footer with last message
         if (state.last_message) |msg| {
@@ -69,9 +70,12 @@ pub fn run(
             );
         }
 
-        // Overlay modal if active
-        if (state.mode == .add_todo_modal) {
-            modal_mod.renderAddTodo(win, &state.add_todo_modal);
+        // Overlay modals / panels
+        switch (state.mode) {
+            .add_todo_modal => modal_mod.renderAddTodo(win, &state.add_todo_modal),
+            .detail => if (state.detail) |ds| view.renderDetail(win, ds),
+            .handoff_modal => if (state.handoff_modal) |*hm| modal_mod.renderHandoff(win, hm),
+            .normal => {},
         }
 
         try vx.render(tty.writer());
@@ -82,6 +86,8 @@ fn handleKey(a: std.mem.Allocator, uc: *UseCases, state: *state_mod.State, k: va
     switch (state.mode) {
         .normal => try handleNormalKey(a, uc, state, k),
         .add_todo_modal => try handleModalKey(a, uc, state, k),
+        .detail => try handleDetailKey(a, state, k),
+        .handoff_modal => try handleHandoffModalKey(a, uc, state, k),
     }
 }
 
@@ -97,8 +103,26 @@ fn handleNormalKey(a: std.mem.Allocator, uc: *UseCases, state: *state_mod.State,
         if (max > 0 and state.sel.row + 1 < max) state.sel.row += 1;
     } else if (k.matches('k', .{}) or k.matches(vaxis.Key.up, .{})) {
         if (state.sel.row > 0) state.sel.row -= 1;
+    } else if (k.matches(vaxis.Key.enter, .{})) {
+        // G1: open detail panel
+        const sel = state.selectedView() orelse return;
+        const ctx = (try uc.get_context.execute(a, sel.task.id, 20)) orelse return;
+        state.detail = .{ .task = ctx.task, .handoffs = ctx.handoffs };
+        state.mode = .detail;
     } else if (k.matches('r', .{})) {
+        // G2: resume (soft — reuse existing session)
+        try doResume(a, uc, state, false);
+    } else if (k.matches('R', .{})) {
+        // G2: force-fresh resume (ignore existing session)
+        try doResume(a, uc, state, true);
+    } else if (k.matches('g', .{})) {
+        // Refresh (formerly 'r' — rebound to 'g' to free 'r' for resume)
         try doRefresh(a, uc, state);
+    } else if (k.matches('H', .{})) {
+        // G3: open handoff modal
+        const sel = state.selectedView() orelse return;
+        state.handoff_modal = .{ .task_id = sel.task.id };
+        state.mode = .handoff_modal;
     } else if (k.matches('o', .{})) {
         try doOpenPr(a, state);
     } else if (k.matches('A', .{})) {
@@ -137,6 +161,46 @@ fn handleModalKey(a: std.mem.Allocator, uc: *UseCases, state: *state_mod.State, 
         const buf = modal.focused();
         try buf.appendSlice(a, t);
     }
+}
+
+/// G1: Handle keys while the task detail panel is open.
+fn handleDetailKey(a: std.mem.Allocator, state: *state_mod.State, k: vaxis.Key) !void {
+    _ = a;
+    if (k.matches(vaxis.Key.escape, .{}) or k.matches(vaxis.Key.enter, .{})) {
+        if (state.detail) |*ds| ds.deinit(state.allocator);
+        state.detail = null;
+        state.mode = .normal;
+    }
+}
+
+/// G3: Handle keys while the handoff text-area modal is open.
+fn handleHandoffModalKey(a: std.mem.Allocator, uc: *UseCases, state: *state_mod.State, k: vaxis.Key) !void {
+    var m = &state.handoff_modal.?;
+    if (k.matches(vaxis.Key.escape, .{})) {
+        m.deinit(a);
+        state.handoff_modal = null;
+        state.mode = .normal;
+        return;
+    }
+    if (k.matches('s', .{ .ctrl = true })) {
+        if (m.body_buf.items.len > 0) {
+            _ = try uc.add_handoff.execute(a, m.task_id, m.body_buf.items);
+            try doRefresh(a, uc, state);
+        }
+        m.deinit(a);
+        state.handoff_modal = null;
+        state.mode = .normal;
+        return;
+    }
+    if (k.matches(vaxis.Key.backspace, .{})) {
+        if (m.body_buf.items.len > 0) _ = m.body_buf.pop();
+        return;
+    }
+    if (k.matches(vaxis.Key.enter, .{})) {
+        try m.body_buf.append(a, '\n');
+        return;
+    }
+    if (k.text) |t| try m.body_buf.appendSlice(a, t);
 }
 
 fn submitModal(a: std.mem.Allocator, uc: *UseCases, state: *state_mod.State) !void {
@@ -222,4 +286,96 @@ fn doOpenPr(a: std.mem.Allocator, state: *state_mod.State) !void {
     } else {
         try state.setMessage("no PR url for this task");
     }
+}
+
+/// G2: Resume the selected task via the configured provider template.
+/// `force_fresh = true` (bound to 'R') ignores any existing session handle and
+/// uses the "fresh" template instead; `false` (bound to 'r') prefers the resume
+/// template when a session handle exists.
+///
+/// Spawn behaviour: the TUI keeps running — we detach the child process with
+/// `spawn` but do NOT `wait`. The terminal multiplexer (tmux/wezterm etc.) is
+/// expected to open a new window/pane; the kanban stays visible.
+/// If no spawn_template is configured, the rendered command is printed in the
+/// footer instead of spawned (copy-paste fallback).
+fn doResume(a: std.mem.Allocator, uc: *UseCases, state: *state_mod.State, force_fresh: bool) !void {
+    const sel = state.selectedView() orelse return;
+
+    const ctx = (try uc.get_context.execute(a, sel.task.id, 1)) orelse {
+        try state.setMessage("no context for task");
+        return;
+    };
+    defer {
+        for (ctx.handoffs) |h| a.free(h.body);
+        a.free(ctx.handoffs);
+        app.freeTask(a, ctx.task);
+    }
+
+    // Write the latest handoff body (if any) to a temp file for {{context_file}}.
+    const runtime_dir: []const u8 = if (std.c.getenv("XDG_RUNTIME_DIR")) |p| std.mem.span(p) else "/tmp";
+    var ts: std.c.timespec = undefined;
+    _ = std.c.clock_gettime(std.c.CLOCK.REALTIME, &ts);
+    const path = try std.fmt.allocPrint(
+        a,
+        "{s}/ctt-handoff-{d}-{d}-{d}.md",
+        .{ runtime_dir, sel.task.id.raw(), ts.sec, ts.nsec },
+    );
+    defer a.free(path);
+
+    const body: []const u8 = if (ctx.handoffs.len > 0) ctx.handoffs[0].body else "";
+    writeContextFile(uc.io, path, body) catch |err| {
+        const msg = try std.fmt.allocPrint(a, "resume: failed to write context file: {s}", .{@errorName(err)});
+        defer a.free(msg);
+        try state.setMessage(msg);
+        return;
+    };
+    defer std.Io.Dir.deleteFileAbsolute(uc.io, path) catch {};
+
+    const no_spawn = uc.spawn_template == null;
+    const cmd = app.BuildResumeCommand.build(a, .{
+        .templates = uc.templates_lookup,
+        .default_provider = uc.default_provider,
+        .session = ctx.task.session,
+        .context_file = path,
+        // When no spawn template configured, render without wrapper for display.
+        .spawn_wrapper = if (no_spawn) null else uc.spawn_template,
+        .force_fresh = force_fresh,
+    }) catch |err| {
+        const msg = try std.fmt.allocPrint(a, "resume: {s}", .{@errorName(err)});
+        defer a.free(msg);
+        try state.setMessage(msg);
+        return;
+    };
+    defer a.free(cmd.command);
+
+    if (no_spawn) {
+        // No terminal multiplexer configured: show the command in the footer.
+        const msg = try std.fmt.allocPrint(a, "resume cmd: {s}", .{cmd.command});
+        defer a.free(msg);
+        try state.setMessage(msg);
+        return;
+    }
+
+    // Detached spawn: /bin/sh -c <cmd>. The TUI keeps running; do NOT wait.
+    const child = try std.process.spawn(uc.io, .{
+        .argv = &[_][]const u8{ "/bin/sh", "-c", cmd.command },
+        .stdin = .inherit,
+        .stdout = .inherit,
+        .stderr = .inherit,
+    });
+    _ = child; // child.wait is intentionally omitted — detached
+
+    const mode_str = if (force_fresh) "force-fresh" else "resume";
+    const msg = try std.fmt.allocPrint(a, "spawned ({s})", .{mode_str});
+    defer a.free(msg);
+    try state.setMessage(msg);
+}
+
+fn writeContextFile(io: std.Io, path: []const u8, body: []const u8) !void {
+    var file = try std.Io.Dir.createFileAbsolute(io, path, .{
+        .truncate = true,
+        .permissions = @enumFromInt(0o600),
+    });
+    defer file.close(io);
+    try file.writeStreamingAll(io, body);
 }
