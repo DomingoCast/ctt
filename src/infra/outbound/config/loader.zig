@@ -278,6 +278,7 @@ test "load config with provider templates and ui" {
     const tmpl_opt = parsed.value.providers.templates.map.get("claude");
     const tmpl = tmpl_opt.?;
     try std.testing.expectEqualStrings("claude --resume {{session_id}}", tmpl.@"resume".?);
+    try std.testing.expectEqualStrings("claude", tmpl.fresh.?);
     try std.testing.expectEqualStrings("C", tmpl.icon.?);
     try std.testing.expectEqualStrings("tmux new-window -- {{cmd}}", parsed.value.ui.spawn.?);
 }
