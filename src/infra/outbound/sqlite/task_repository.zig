@@ -39,6 +39,8 @@ const Db = @import("db.zig").Db;
 // 31  i.title
 // 32  i.state
 // 33  i.fetched_at
+// 34  t.session_provider
+// 35  t.session_id
 
 const TASK_SELECT =
     \\SELECT
@@ -48,7 +50,8 @@ const TASK_SELECT =
     \\    rw.name,
     \\    p.id, p.repo_id, p.number, p.url, p.title, p.head_branch, p.state, p.updated_at, p.fetched_at,
     \\    rp.name,
-    \\    i.id, i.provider, i.external_id, i.url, i.title, i.state, i.fetched_at
+    \\    i.id, i.provider, i.external_id, i.url, i.title, i.state, i.fetched_at,
+    \\    t.session_provider, t.session_id
     \\FROM tasks t
     \\LEFT JOIN worktrees w ON t.worktree_id = w.id
     \\LEFT JOIN repos rw    ON w.repo_id = rw.id
@@ -257,6 +260,19 @@ pub const SqliteTaskRepository = struct {
                 conn.exec("UPDATE tasks SET issue_id = ?, updated_at = datetime('now') WHERE id = ?", .{ iss_id.raw(), id.raw() }) catch |e| return mapErr(e);
             } else {
                 conn.exec("UPDATE tasks SET issue_id = NULL, updated_at = datetime('now') WHERE id = ?", .{id.raw()}) catch |e| return mapErr(e);
+            }
+        }
+        if (patch.session) |maybe_sh| {
+            if (maybe_sh) |sh| {
+                conn.exec(
+                    "UPDATE tasks SET session_provider = ?, session_id = ?, updated_at = datetime('now') WHERE id = ?",
+                    .{ sh.provider, sh.session_id, id.raw() },
+                ) catch |e| return mapErr(e);
+            } else {
+                conn.exec(
+                    "UPDATE tasks SET session_provider = NULL, session_id = NULL, updated_at = datetime('now') WHERE id = ?",
+                    .{id.raw()},
+                ) catch |e| return mapErr(e);
             }
         }
 
@@ -631,6 +647,17 @@ fn rowToTask(a: std.mem.Allocator, row: zqlite.Row) !d.Task {
         if (iss.state) |s| a.free(s);
     };
 
+    // ── session columns (34-35) ──
+    const sp_raw = row.nullableText(34);
+    const si_raw = row.nullableText(35);
+    const session: ?d.SessionHandle = if (sp_raw != null and si_raw != null) blk: {
+        const prov = try a.dupe(u8, sp_raw.?);
+        errdefer a.free(prov);
+        const sid = try a.dupe(u8, si_raw.?);
+        break :blk d.SessionHandle{ .provider = prov, .session_id = sid };
+    } else null;
+    errdefer if (session) |s| { a.free(s.provider); a.free(s.session_id); };
+
     return d.Task{
         .id          = @enumFromInt(task_id),
         .title       = title,
@@ -640,7 +667,7 @@ fn rowToTask(a: std.mem.Allocator, row: zqlite.Row) !d.Task {
         .issue       = issue,
         .archived    = archived_int != 0,
         .notes       = notes,
-        .session     = null,
+        .session     = session,
         .created_at  = .{ .unix_secs = parseUnixSecs(created_raw) },
         .updated_at  = .{ .unix_secs = parseUnixSecs(updated_raw) },
     };
@@ -669,5 +696,9 @@ pub fn freeTask(a: std.mem.Allocator, t: d.Task) void {
         if (i.url)   |u| a.free(u);
         if (i.title) |tt| a.free(tt);
         if (i.state) |s| a.free(s);
+    }
+    if (t.session) |s| {
+        a.free(s.provider);
+        a.free(s.session_id);
     }
 }

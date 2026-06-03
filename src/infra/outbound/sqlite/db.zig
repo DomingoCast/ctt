@@ -35,7 +35,7 @@ pub const Db = struct {
     }
 };
 
-fn tmpDbPath(allocator: std.mem.Allocator, tmp: std.testing.TmpDir, filename: []const u8) ![:0]u8 {
+pub fn tmpDbPath(allocator: std.mem.Allocator, tmp: std.testing.TmpDir, filename: []const u8) ![:0]u8 {
     var path_buf: [std.Io.Dir.max_path_bytes]u8 = undefined;
     const n = try tmp.dir.realPath(std.testing.io, &path_buf);
     return std.fmt.allocPrintSentinel(allocator, "{s}/{s}", .{ path_buf[0..n], filename }, 0);

@@ -251,3 +251,61 @@ test "get reconstructs linked worktree" {
     try std.testing.expectEqual(@as(u32, 2), wt.commits_ahead_of_default);
     try std.testing.expect(wt.has_upstream);
 }
+
+// ─── Test 8: session handle round-trip ────────────────────────────────────
+
+test "task session handle round-trip" {
+    var tmp = std.testing.tmpDir(.{});
+    defer tmp.cleanup();
+    var db = try openTempDb(std.testing.allocator, &tmp);
+    defer db.close();
+
+    var repo = SqliteTaskRepository.init(&db);
+    const iface = repo.interface();
+
+    const created = try iface.create(std.testing.allocator, .{ .title = "t" });
+    try std.testing.expect(created.session == null);
+    freeTask(std.testing.allocator, created);
+
+    // Re-get to get a fresh copy (created was freed above, but id is still valid)
+    const fetched = (try iface.get(std.testing.allocator, created.id)).?;
+    defer freeTask(std.testing.allocator, fetched);
+
+    const handle = d.SessionHandle{ .provider = "claude", .session_id = "abc-123" };
+    const updated = try iface.update(std.testing.allocator, created.id, .{ .session = @as(??d.SessionHandle, handle) });
+    defer freeTask(std.testing.allocator, updated);
+
+    const got = (try iface.get(std.testing.allocator, created.id)).?;
+    defer freeTask(std.testing.allocator, got);
+
+    if (got.session) |s| {
+        try std.testing.expectEqualStrings("claude", s.provider);
+        try std.testing.expectEqualStrings("abc-123", s.session_id);
+    } else try std.testing.expect(false);
+}
+
+// ─── Test 9: session handle clear ─────────────────────────────────────────
+
+test "task session handle clear" {
+    var tmp = std.testing.tmpDir(.{});
+    defer tmp.cleanup();
+    var db = try openTempDb(std.testing.allocator, &tmp);
+    defer db.close();
+
+    var repo = SqliteTaskRepository.init(&db);
+    const iface = repo.interface();
+
+    const created = try iface.create(std.testing.allocator, .{ .title = "t" });
+    freeTask(std.testing.allocator, created);
+
+    const with_session = try iface.update(std.testing.allocator, created.id, .{ .session = @as(??d.SessionHandle, .{ .provider = "x", .session_id = "y" }) });
+    freeTask(std.testing.allocator, with_session);
+
+    // Use @as(?d.SessionHandle, null) to express Some(null) = "clear the field".
+    const cleared = try iface.update(std.testing.allocator, created.id, .{ .session = @as(?d.SessionHandle, null) });
+    freeTask(std.testing.allocator, cleared);
+
+    const got = (try iface.get(std.testing.allocator, created.id)).?;
+    defer freeTask(std.testing.allocator, got);
+    try std.testing.expect(got.session == null);
+}
