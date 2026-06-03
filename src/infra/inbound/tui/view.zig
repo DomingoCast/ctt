@@ -31,10 +31,26 @@ fn oneCharUpper(s: []const u8) []const u8 {
     return s[0..1];
 }
 
-/// Render a single card at (x_off, y_off) inside `col_win`.
+/// Return the display icon for a provider: template icon → first letter → generic AI glyph.
+fn providerIcon(
+    provider: []const u8,
+    templates_lookup: *const fn ([]const u8) ?app.BuildResumeCommand.ProviderTemplate,
+    glyphs: glyphs_mod.GlyphSet,
+) []const u8 {
+    if (templates_lookup(provider)) |tmpl| {
+        if (tmpl.icon) |icon| return icon;
+    }
+    // No icon in config; use first letter (uppercase ASCII) as fallback, else generic AI glyph.
+    if (provider.len > 0) {
+        return oneCharUpper(provider);
+    }
+    return glyphs.ai;
+}
+
+/// Render a single card at (x_off, y_off) inside `win`.
 /// Returns the height consumed (always 4: top border + title + footer + bottom border).
 fn renderCard(
-    col_win: vaxis.Window,
+    win: vaxis.Window,
     x_off: i17,
     y_off: i17,
     width: u16,
@@ -55,7 +71,7 @@ fn renderCard(
     else
         .single_rounded;
 
-    const sub = col_win.child(.{
+    const sub = win.child(.{
         .x_off = x_off,
         .y_off = y_off,
         .width = width,
@@ -72,16 +88,13 @@ fn renderCard(
 
     // Provider icon (if session exists)
     if (v.task.session) |sess| {
-        const icon: []const u8 = if (templates_lookup(sess.provider)) |tmpl|
-            (tmpl.icon orelse glyphs.ai)
-        else
-            glyphs.ai;
+        const icon: []const u8 = providerIcon(sess.provider, templates_lookup, glyphs);
         if (icon.len > 0) {
             _ = sub.printSegment(
                 .{ .text = icon, .style = .{ .fg = colors.metadata.toVaxis() } },
                 .{ .row_offset = 0, .col_offset = col },
             );
-            col += @intCast(icon.len + 1);
+            col += @intCast(sub.gwidth(icon) + 1);
         }
     }
 
@@ -118,7 +131,7 @@ fn renderCard(
     for (fields) |f| {
         if (f.glyph.len > 0) {
             _ = sub.printSegment(.{ .text = f.glyph, .style = meta_style }, .{ .row_offset = 1, .col_offset = fcol });
-            fcol += @intCast(f.glyph.len + 1);
+            fcol += @intCast(sub.gwidth(f.glyph) + 1);
         }
         _ = sub.printSegment(.{ .text = f.text, .style = meta_style }, .{ .row_offset = 1, .col_offset = fcol });
         fcol += @intCast(f.text.len + 2);
