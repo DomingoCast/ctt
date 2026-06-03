@@ -7,7 +7,7 @@ const theme_mod = @import("theme.zig");
 
 pub const Mode = enum { normal, add_todo_modal, detail, handoff_modal, help_modal };
 
-pub const ModalFocus = enum { title, branch, issue };
+pub const ModalFocus = enum { title, branch, issue, project };
 
 pub const DetailState = struct {
     task: d.Task,
@@ -34,11 +34,15 @@ pub const AddTodoModal = struct {
     title_buf: std.ArrayList(u8) = .empty,
     branch_buf: std.ArrayList(u8) = .empty,
     issue_buf: std.ArrayList(u8) = .empty,
+    project_buf: std.ArrayList(u8) = .empty,
+    project_selection: u8 = 0,
+    project_dropdown_open: bool = false,
 
     pub fn deinit(self: *AddTodoModal, a: std.mem.Allocator) void {
         self.title_buf.deinit(a);
         self.branch_buf.deinit(a);
         self.issue_buf.deinit(a);
+        self.project_buf.deinit(a);
     }
 
     pub fn reset(self: *AddTodoModal, a: std.mem.Allocator) void {
@@ -51,6 +55,7 @@ pub const AddTodoModal = struct {
             .title => &self.title_buf,
             .branch => &self.branch_buf,
             .issue => &self.issue_buf,
+            .project => &self.project_buf,
         };
     }
 
@@ -58,7 +63,8 @@ pub const AddTodoModal = struct {
         self.focus = switch (self.focus) {
             .title => .branch,
             .branch => .issue,
-            .issue => .title,
+            .issue => .project,
+            .project => .title,
         };
     }
 };
@@ -136,7 +142,7 @@ pub const State = struct {
     }
 };
 
-test "modal cycleFocus rotates through title->branch->issue->title" {
+test "modal cycleFocus rotates through title->branch->issue->project->title" {
     var m = AddTodoModal{};
     defer m.deinit(std.testing.allocator);
     try std.testing.expectEqual(ModalFocus.title, m.focus);
@@ -144,6 +150,8 @@ test "modal cycleFocus rotates through title->branch->issue->title" {
     try std.testing.expectEqual(ModalFocus.branch, m.focus);
     m.cycleFocus();
     try std.testing.expectEqual(ModalFocus.issue, m.focus);
+    m.cycleFocus();
+    try std.testing.expectEqual(ModalFocus.project, m.focus);
     m.cycleFocus();
     try std.testing.expectEqual(ModalFocus.title, m.focus);
 }
