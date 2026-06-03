@@ -109,7 +109,7 @@ pub fn main(init: std.process.Init) !void {
         .list_handoffs = .{ .handoffs = handoff_repo.interface() },
         .get_context = .{ .tasks = task_repo.interface(), .handoffs = handoff_repo.interface() },
         .templates_lookup = lookupTemplate,
-        .default_provider = cfg.providers.default,
+        .default_provider = cfg.providers.default orelse "claude",
         .spawn_template = cfg.ui.spawn,
         .io = io,
     };
@@ -143,7 +143,7 @@ pub fn main(init: std.process.Init) !void {
                 .add_handoff = cli_uc.add_handoff,
                 .get_context = cli_uc.get_context,
                 .templates_lookup = lookupTemplate,
-                .default_provider = cfg.providers.default,
+                .default_provider = cfg.providers.default orelse "claude",
                 .spawn_template = cfg.ui.spawn,
                 .io = io,
                 .refresh_interval_ms = cfg.ui.refresh_interval_ms,
@@ -247,14 +247,27 @@ fn freeRepos(a: std.mem.Allocator, repos: []d.Repo) void {
 
 var templates_map_ptr: ?*const std.StringArrayHashMapUnmanaged(cfg_mod.ProviderTemplates) = null;
 
+// Built-in defaults for the most common provider (claude). User config entries
+// override field-by-field; missing fields fall back to these.
+const CLAUDE_DEFAULT = app.BuildResumeCommand.ProviderTemplate{
+    .@"resume" = "claude --resume {{session_id}}",
+    .fresh     = "claude --append-system-prompt \"$(cat {{context_file}})\"",
+    .icon      = "C",
+};
+
 fn lookupTemplate(provider: []const u8) ?app.BuildResumeCommand.ProviderTemplate {
-    const map = templates_map_ptr orelse return null;
-    const entry = map.get(provider) orelse return null;
-    return .{
-        .@"resume" = entry.@"resume",
-        .fresh = entry.fresh,
-        .icon = entry.icon,
-    };
+    const is_claude = std.mem.eql(u8, provider, "claude");
+    if (templates_map_ptr) |map| {
+        if (map.get(provider)) |entry| {
+            return .{
+                .@"resume" = entry.@"resume" orelse if (is_claude) CLAUDE_DEFAULT.@"resume" else null,
+                .fresh     = entry.fresh     orelse if (is_claude) CLAUDE_DEFAULT.fresh     else null,
+                .icon      = entry.icon      orelse if (is_claude) CLAUDE_DEFAULT.icon      else null,
+            };
+        }
+    }
+    if (is_claude) return CLAUDE_DEFAULT;
+    return null;
 }
 
 // ---------------------------------------------------------------------------
