@@ -81,13 +81,8 @@ pub fn run(
         _ = std.c.clock_gettime(std.c.CLOCK.REALTIME, &now_ts);
         view.render(win, state.views, state.sel, &state, uc.templates_lookup, now_ts.sec);
 
-        // Footer with last message
-        if (state.last_message) |msg| {
-            _ = win.printSegment(
-                .{ .text = msg },
-                .{ .row_offset = win.height -| 1, .col_offset = 0 },
-            );
-        }
+        // Footer: last message + pulse indicator
+        view.renderFooter(win, &state);
 
         // Overlay modals / panels
         switch (state.mode) {

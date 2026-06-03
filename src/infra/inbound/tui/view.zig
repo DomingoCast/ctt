@@ -262,6 +262,30 @@ pub fn renderDetail(
     }
 }
 
+/// Render the footer: last message left-aligned and pulse indicator right-aligned.
+/// The pulse indicator shows a braille spinner when refreshing, otherwise a dim dot.
+pub fn renderFooter(win: vaxis.Window, state: *const state_mod.State) void {
+    // Left: last message
+    if (state.last_message) |msg| {
+        _ = win.printSegment(
+            .{ .text = msg, .style = .{ .fg = state.colors.metadata.toVaxis() } },
+            .{ .row_offset = win.height -| 1, .col_offset = 0 },
+        );
+    }
+    // Right: pulse indicator
+    const spinner_frames = [_][]const u8{ "⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏" };
+    const pulse_glyph: []const u8 = if (state.refreshing)
+        spinner_frames[state.spinner_frame % spinner_frames.len]
+    else
+        "●";
+    const pulse_color = if (state.refreshing) state.colors.title else state.colors.idle_pulse;
+    const pulse_col: u16 = win.width -| 2;
+    _ = win.printSegment(
+        .{ .text = pulse_glyph, .style = .{ .fg = pulse_color.toVaxis() } },
+        .{ .row_offset = win.height -| 1, .col_offset = pulse_col },
+    );
+}
+
 test "Selection defaults to (0, 0)" {
     const s = Selection{};
     try std.testing.expectEqual(@as(u2, 0), s.column);
