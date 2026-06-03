@@ -27,9 +27,8 @@ pub const GetContext = struct {
     }
 };
 
-/// Free all heap allocations inside a `d.Task`.
-/// Mirrors the logic in src/infra/outbound/sqlite/task_repository.zig freeTask,
-/// kept private here since the infra layer is not accessible from application.
+// keep in sync with the other freeTask: src/infra/outbound/sqlite/task_repository.zig
+// (a proper refactor moving this to a shared module or Task.deinit is tracked separately)
 fn freeTask(a: std.mem.Allocator, t: d.Task) void {
     a.free(t.title);
     if (t.branch_hint) |b| a.free(b.value);
@@ -88,6 +87,10 @@ test "GetContext returns task and handoffs" {
         for (ctx.handoffs) |e| a.free(e.body);
         a.free(ctx.handoffs);
     }
+    // Note: ctx.task fields are NOT freed in this test because FakeTaskRepo
+    // returns arena-owned strings (it ignores the passed allocator). For an
+    // integration test against a real repo, you MUST call freeTask(a, ctx.task)
+    // before letting ctx go out of scope.
     try std.testing.expectEqualStrings("do work", ctx.task.title);
     try std.testing.expectEqual(@as(usize, 1), ctx.handoffs.len);
     try std.testing.expectEqualStrings("checkpoint", ctx.handoffs[0].body);

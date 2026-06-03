@@ -674,7 +674,8 @@ fn rowToTask(a: std.mem.Allocator, row: zqlite.Row) !d.Task {
     };
 }
 
-/// Free all heap allocations inside a `d.Task`.
+// keep in sync with the other freeTask: src/application/use_cases/get_context.zig
+// (a proper refactor moving this to a shared module or Task.deinit is tracked separately)
 pub fn freeTask(a: std.mem.Allocator, t: d.Task) void {
     a.free(t.title);
     if (t.branch_hint) |b| a.free(b.value);
