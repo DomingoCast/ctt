@@ -81,6 +81,11 @@ pub fn main(init: std.process.Init) !void {
     // === Issue gateways (currently just linear) ===
     const issue_gateways = [_]d.ports.IssueGateway{linear_gateway.interface()};
 
+    // === Wire templates lookup (must happen before cli.UseCases is constructed) ===
+    // Set the file-scope pointer so lookupTemplate can resolve provider templates
+    // from the config. The cfg_parsed arena owns the map for the process lifetime.
+    templates_map_ptr = &cfg_parsed.value.providers.templates.map;
+
     // === Build CLI use cases ===
     var cli_uc = cli.UseCases{
         .add_todo = .{ .tasks = task_repo.interface() },
@@ -103,6 +108,10 @@ pub fn main(init: std.process.Init) !void {
         .add_handoff = .{ .handoffs = handoff_repo.interface(), .clock = SystemClock.iface() },
         .list_handoffs = .{ .handoffs = handoff_repo.interface() },
         .get_context = .{ .tasks = task_repo.interface(), .handoffs = handoff_repo.interface() },
+        .templates_lookup = lookupTemplate,
+        .default_provider = cfg.providers.default,
+        .spawn_template = cfg.ui.spawn,
+        .io = io,
     };
 
     // === Parse command ===
@@ -211,6 +220,27 @@ fn freeRepos(a: std.mem.Allocator, repos: []d.Repo) void {
         a.free(r.default_branch);
     }
     a.free(repos);
+}
+
+// ---------------------------------------------------------------------------
+// lookupTemplate: static-var bridge between config-layer templates and the
+// application layer's BuildResumeCommand.ProviderTemplate.
+//
+// File-scope state for the templates lookup. The composition root sets this
+// before any CLI/TUI handler runs; it stays valid for the lifetime of the
+// process. Single-threaded; no synchronization needed.
+// ---------------------------------------------------------------------------
+
+var templates_map_ptr: ?*const std.StringArrayHashMapUnmanaged(cfg_mod.ProviderTemplates) = null;
+
+fn lookupTemplate(provider: []const u8) ?app.BuildResumeCommand.ProviderTemplate {
+    const map = templates_map_ptr orelse return null;
+    const entry = map.get(provider) orelse return null;
+    return .{
+        .@"resume" = entry.@"resume",
+        .fresh = entry.fresh,
+        .icon = entry.icon,
+    };
 }
 
 // ---------------------------------------------------------------------------

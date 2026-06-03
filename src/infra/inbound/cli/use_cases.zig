@@ -1,3 +1,4 @@
+const std = @import("std");
 const app = @import("application");
 const d = @import("domain");
 
@@ -15,4 +16,10 @@ pub const UseCases = struct {
     add_handoff: app.AddHandoff,
     list_handoffs: app.ListHandoffs,
     get_context: app.GetContext,
+    // For BuildResumeCommand: composition root wires these from config.
+    templates_lookup: *const fn (provider: []const u8) ?app.BuildResumeCommand.ProviderTemplate,
+    default_provider: ?[]const u8,
+    spawn_template: ?[]const u8,
+    // Needed for interactive process spawning and absolute-path file writes.
+    io: std.Io,
 };

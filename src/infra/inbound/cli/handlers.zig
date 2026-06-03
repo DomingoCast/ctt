@@ -246,7 +246,7 @@ fn handleHandoff(a: std.mem.Allocator, uc: *UseCases, args: args_mod.HandoffArgs
     // when the body is printed by `ctt handoff <id> --latest`.
     const body_raw = if (args.note) |n| try a.dupe(u8, n) else try readStdinAll(a);
     defer a.free(body_raw);
-    const body = std.mem.trimRight(u8, body_raw, "\r\n");
+    const body = std.mem.trimEnd(u8, body_raw, "\r\n");
     if (body.len == 0) return error.MissingArg;
     const id = try uc.add_handoff.execute(a, tid, body);
     try writer.print("handoff #{d} added to task #{d}\n", .{ id.raw(), args.id });
@@ -272,14 +272,64 @@ fn handleContext(a: std.mem.Allocator, uc: *UseCases, args: args_mod.ContextArgs
 }
 
 fn handleResume(a: std.mem.Allocator, uc: *UseCases, args: args_mod.ResumeArgs, writer: anytype) !void {
-    // Interim stub — real implementation lands in Phase E3 (template renderer + spawn).
-    // We print + exit 0 (rather than error.NotImplemented) so a `ctt resume <id>` from a
-    // user trying it out gets a clear message rather than a process-exit-1 error. This
-    // is acceptable for the sprint window; if E3 doesn't land, swap to error.NotImplemented.
-    _ = a;
-    _ = uc;
-    _ = args;
-    try writer.writeAll("resume not yet wired\n");
+    const tid: d.ids.TaskId = @enumFromInt(args.id);
+
+    const ctx = (try uc.get_context.execute(a, tid, 1)) orelse {
+        try writer.print("no task with id {d}\n", .{args.id});
+        return;
+    };
+    defer {
+        for (ctx.handoffs) |h| a.free(h.body);
+        a.free(ctx.handoffs);
+        app.freeTask(a, ctx.task);
+    }
+
+    // Write the latest handoff body (if any) to a temp file for {{context_file}}
+    // substitution. Always create the file so the substitution always has a real
+    // path; if no handoff exists the file is empty.
+    const dir: []const u8 = if (std.c.getenv("XDG_RUNTIME_DIR")) |p| std.mem.span(p) else "/tmp";
+    var ts: std.c.timespec = undefined;
+    _ = std.c.clock_gettime(std.c.CLOCK.REALTIME, &ts);
+    const path = try std.fmt.allocPrint(a, "{s}/ctt-handoff-{d}-{d}.md", .{ dir, args.id, ts.sec });
+    defer a.free(path);
+    const body: []const u8 = if (ctx.handoffs.len > 0) ctx.handoffs[0].body else "";
+    try writeContextFile(uc.io, path, body);
+
+    const cmd = app.BuildResumeCommand.build(a, .{
+        .templates = uc.templates_lookup,
+        .default_provider = uc.default_provider,
+        .session = ctx.task.session,
+        .context_file = path,
+        .spawn_wrapper = if (args.print) null else uc.spawn_template,
+        .force_fresh = args.fresh,
+    }) catch |e| {
+        try writer.print("resume failed: {s}\n", .{@errorName(e)});
+        return;
+    };
+    defer a.free(cmd.command);
+
+    if (args.print) {
+        try writer.print("{s}\n", .{cmd.command});
+        return;
+    }
+
+    // Spawn /bin/sh -c <cmd> synchronously, inheriting stdio so the user's
+    // terminal becomes the spawned command's terminal.
+    var child = try std.process.spawn(uc.io, .{
+        .argv = &[_][]const u8{ "/bin/sh", "-c", cmd.command },
+        .stdin = .inherit,
+        .stdout = .inherit,
+        .stderr = .inherit,
+    });
+    _ = try child.wait(uc.io);
+}
+
+fn writeContextFile(io: std.Io, path: []const u8, body: []const u8) !void {
+    // Use Dir.createFileAbsolute (path is always absolute: /tmp/... or $XDG_RUNTIME_DIR/...)
+    // then write the body and close. Mirrors the pattern from infra/outbound/config/loader.zig.
+    var file = try std.Io.Dir.createFileAbsolute(io, path, .{ .truncate = true });
+    defer file.close(io);
+    try file.writeStreamingAll(io, body);
 }
 
 fn readStdinAll(a: std.mem.Allocator) ![]u8 {
@@ -448,6 +498,10 @@ const MiniRepo = struct {
     }
 };
 
+fn noopTemplateLookup(_: []const u8) ?app.BuildResumeCommand.ProviderTemplate {
+    return null;
+}
+
 fn buildTestUc(repo: *MiniRepo) UseCases {
     return UseCases{
         .add_todo = .{ .tasks = repo.interface() },
@@ -463,6 +517,10 @@ fn buildTestUc(repo: *MiniRepo) UseCases {
         .add_handoff = undefined,
         .list_handoffs = undefined,
         .get_context = undefined,
+        .templates_lookup = noopTemplateLookup,
+        .default_provider = null,
+        .spawn_template = null,
+        .io = std.testing.io,
     };
 }
 
