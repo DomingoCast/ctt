@@ -11,6 +11,7 @@ pub const LinkTarget  = @import("use_cases/link_task.zig").LinkTarget;
 pub const RefreshAll  = @import("use_cases/refresh_all.zig").RefreshAll;
 pub const RefreshReport = @import("use_cases/refresh_all.zig").RefreshReport;
 pub const SetSessionHandle = @import("use_cases/set_session_handle.zig").SetSessionHandle;
+pub const AddHandoff  = @import("use_cases/add_handoff.zig").AddHandoff;
 
 test {
     _ = @import("use_cases/add_todo.zig");
@@ -23,4 +24,5 @@ test {
     _ = @import("use_cases/refresh_all.zig");
     _ = @import("tests/refresh_all_test.zig");
     _ = @import("use_cases/set_session_handle.zig");
+    _ = @import("use_cases/add_handoff.zig");
 }
