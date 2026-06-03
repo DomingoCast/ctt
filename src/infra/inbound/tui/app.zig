@@ -49,7 +49,7 @@ pub fn run(
     defer state.deinit();
 
     // Initial load
-    try doRefresh(a, uc, &state);
+    try doRefresh(a, uc, &state, true);
 
     while (true) {
         const event = try loop.nextEvent();
@@ -61,7 +61,7 @@ pub fn run(
             },
             .winsize => |ws| try vx.resize(a, tty.writer(), ws),
             .tick => {}, // wired in D3
-            .focus_in => {}, // wired in D2
+            .focus_in => try doRefresh(a, uc, &state, true),
             .focus_out => {}, // intentionally no-op
         }
 
@@ -123,7 +123,7 @@ fn handleNormalKey(a: std.mem.Allocator, uc: *UseCases, state: *state_mod.State,
         try doResume(a, uc, state, true);
     } else if (k.matches('g', .{})) {
         // Refresh (formerly 'r' — rebound to 'g' to free 'r' for resume)
-        try doRefresh(a, uc, state);
+        try doRefresh(a, uc, state, true);
     } else if (k.matches('H', .{})) {
         // G3: open handoff modal
         const sel = state.selectedView() orelse return;
@@ -191,7 +191,7 @@ fn handleHandoffModalKey(a: std.mem.Allocator, uc: *UseCases, state: *state_mod.
     if (k.matches('s', .{ .ctrl = true })) {
         if (m.body_buf.items.len > 0) {
             _ = try uc.add_handoff.execute(a, m.task_id, m.body_buf.items);
-            try doRefresh(a, uc, state);
+            try doRefresh(a, uc, state, true);
         }
         m.deinit(a);
         state.handoff_modal = null;
@@ -237,10 +237,12 @@ fn submitModal(a: std.mem.Allocator, uc: *UseCases, state: *state_mod.State) !vo
 
     modal.reset(a);
     state.mode = .normal;
-    try doRefresh(a, uc, state);
+    try doRefresh(a, uc, state, true);
 }
 
-fn doRefresh(a: std.mem.Allocator, uc: *UseCases, state: *state_mod.State) !void {
+fn doRefresh(a: std.mem.Allocator, uc: *UseCases, state: *state_mod.State, force: bool) !void {
+    _ = force; // used in D3 once mtime guard is added
+
     state.refreshing = true;
     var report = uc.refresh.execute(a, uc.repos) catch |err| {
         state.refreshing = false;
@@ -272,13 +274,13 @@ fn doRefresh(a: std.mem.Allocator, uc: *UseCases, state: *state_mod.State) !void
 fn doArchive(a: std.mem.Allocator, uc: *UseCases, state: *state_mod.State) !void {
     const sel = state.selectedView() orelse return;
     _ = uc.archive.execute(a, sel.task.id, !sel.task.archived) catch {};
-    try doRefresh(a, uc, state);
+    try doRefresh(a, uc, state, true);
 }
 
 fn doDelete(a: std.mem.Allocator, uc: *UseCases, state: *state_mod.State) !void {
     const sel = state.selectedView() orelse return;
     uc.delete_task.execute(sel.task.id) catch {};
-    try doRefresh(a, uc, state);
+    try doRefresh(a, uc, state, true);
 }
 
 fn doOpenPr(a: std.mem.Allocator, state: *state_mod.State) !void {
