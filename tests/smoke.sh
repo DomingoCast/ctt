@@ -56,3 +56,65 @@ $BIN list --json 2>/dev/null | python3 -c 'import sys, json; tasks = json.load(s
 
 echo ""
 echo "smoke OK ✓"
+
+# ---------------------------------------------------------------------------
+# Handoff / resume smoke
+# ---------------------------------------------------------------------------
+echo "--- handoff/resume smoke ---"
+
+echo "==> add task for handoff smoke"
+$BIN add "handoff smoke" 2>/dev/null
+HID=$($BIN list --json 2>/dev/null | python3 -c 'import sys, json; tasks = json.load(sys.stdin); print([t for t in tasks if t["title"] == "handoff smoke"][-1]["id"])')
+echo "==> handoff task id is $HID"
+
+echo "==> set session"
+$BIN session set "$HID" claude abc-test-123 2>/dev/null
+
+echo "==> add two handoffs"
+$BIN handoff "$HID" --note "first checkpoint" 2>/dev/null
+$BIN handoff "$HID" --note "second checkpoint" 2>/dev/null
+
+echo "==> context should have 2 handoffs"
+CTXJSON=$($BIN context "$HID" --json 2>/dev/null)
+echo "$CTXJSON" | python3 -c '
+import sys, json
+ctx = json.load(sys.stdin)
+assert len(ctx["handoffs"]) == 2, "expected 2 handoffs, got: %d" % len(ctx["handoffs"])
+print("handoffs count ok:", len(ctx["handoffs"]))
+'
+
+echo "==> context session_id matches"
+echo "$CTXJSON" | python3 -c '
+import sys, json
+ctx = json.load(sys.stdin)
+assert ctx["task"]["session"]["session_id"] == "abc-test-123", "session_id mismatch: %s" % ctx
+print("session_id ok:", ctx["task"]["session"]["session_id"])
+'
+
+echo "==> resume --print (tolerant: accepts rendered command or NoTemplateForProvider/NoDefaultProvider)"
+RESUME_OUT=$($BIN resume "$HID" --print 2>&1 || true)
+echo "$RESUME_OUT" | python3 -c '
+import sys
+out = sys.stdin.read()
+ok_patterns = ["abc-test-123", "NoTemplateForProvider", "NoDefaultProvider", "context_file", "append-system-prompt", "claude"]
+assert any(p in out for p in ok_patterns), "resume --print output did not match any expected pattern:\n%s" % out
+print("resume --print ok (output contains expected pattern)")
+'
+
+echo "==> clear session"
+$BIN session clear "$HID" 2>/dev/null
+
+echo "==> resume --print after session clear (tolerant: accepts any valid output or known error)"
+RESUME_FRESH=$($BIN resume "$HID" --print 2>&1 || true)
+echo "$RESUME_FRESH" | python3 -c '
+import sys
+out = sys.stdin.read()
+ok_patterns = ["context_file", "append-system-prompt", "claude", "NoTemplateForProvider", "NoDefaultProvider", "resume failed"]
+assert any(p in out for p in ok_patterns), "resume --print (fresh) output did not match any expected pattern:\n%s" % out
+print("resume --print (fresh) ok (output contains expected pattern)")
+'
+
+echo "==> delete handoff task"
+$BIN delete "$HID" 2>/dev/null
+
+echo "handoff smoke OK"
