@@ -1,8 +1,9 @@
-pub const ids        = @import("value_objects/ids.zig");
-pub const BranchName = @import("value_objects/branch_name.zig").BranchName;
-pub const Sha        = @import("value_objects/sha.zig").Sha;
-pub const Timestamp  = @import("value_objects/timestamp.zig").Timestamp;
-pub const Url        = @import("value_objects/url.zig").Url;
+pub const ids          = @import("value_objects/ids.zig");
+pub const BranchName   = @import("value_objects/branch_name.zig").BranchName;
+pub const Sha          = @import("value_objects/sha.zig").Sha;
+pub const Timestamp    = @import("value_objects/timestamp.zig").Timestamp;
+pub const Url          = @import("value_objects/url.zig").Url;
+pub const SessionHandle = @import("value_objects/session_handle.zig").SessionHandle;
 
 pub const status    = @import("entities/status.zig");
 pub const Status    = status.Status;
@@ -33,7 +34,7 @@ pub const ports = struct {
     pub const Clock          = @import("ports/clock.zig").Clock;
 };
 
-test { _ = @import("entities/task.zig"); _ = @import("services/status_derive.zig"); _ = @import("services/ticket_parse.zig"); _ = @import("services/hints.zig"); }
+test { _ = @import("entities/task.zig"); _ = @import("services/status_derive.zig"); _ = @import("services/ticket_parse.zig"); _ = @import("services/hints.zig"); _ = @import("value_objects/session_handle.zig"); }
 
 test "Clock vtable round-trip" {
     const std = @import("std");
