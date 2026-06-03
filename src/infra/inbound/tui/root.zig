@@ -14,5 +14,6 @@ test {
     _ = @import("use_cases.zig");
     _ = @import("theme.zig");
     _ = @import("glyphs.zig");
+    _ = @import("card_layout.zig");
     // app.zig requires a real TTY, so don't include it in the test block
 }
