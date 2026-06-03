@@ -10,6 +10,7 @@ const card_layout = @import("card_layout.zig");
 const tick = @import("tick.zig");
 const glyphs_mod = @import("glyphs.zig");
 const theme_mod = @import("theme.zig");
+const repo_match = @import("repo_match.zig");
 
 const Event = union(enum) {
     key_press: vaxis.Key,
@@ -174,8 +175,13 @@ fn handleModalKey(a: std.mem.Allocator, uc: *UseCases, state: *state_mod.State, 
         state.mode = .normal;
         return;
     }
+
+    if (modal.focus == .project) {
+        return handleProjectFieldKey(a, uc, state, k);
+    }
+
     if (k.matches(vaxis.Key.enter, .{})) {
-        try submitModal(a, uc, state);
+        try submitAddTodo(a, uc, state);
         return;
     }
     if (k.matches(vaxis.Key.tab, .{})) {
@@ -192,6 +198,79 @@ fn handleModalKey(a: std.mem.Allocator, uc: *UseCases, state: *state_mod.State, 
         const buf = modal.focused();
         try buf.appendSlice(a, t);
     }
+}
+
+fn handleProjectFieldKey(a: std.mem.Allocator, uc: *UseCases, state: *state_mod.State, k: vaxis.Key) !void {
+    const modal = &state.add_todo_modal;
+
+    var match_buf: [repo_match.MAX_RESULTS]repo_match.Match = undefined;
+    const matches = repo_match.fuzzyMatch(uc.cfg_repos, modal.project_buf.items, &match_buf);
+    const has_use_path = modal.project_buf.items.len > 0 and !exactMatch(matches, modal.project_buf.items);
+    const visible: u8 = @intCast(matches.len + @as(usize, if (has_use_path) 1 else 0));
+
+    if (k.matches(vaxis.Key.up, .{})) {
+        if (modal.project_selection > 0) modal.project_selection -= 1;
+        modal.project_dropdown_open = true;
+        return;
+    }
+    if (k.matches(vaxis.Key.down, .{})) {
+        if (modal.project_selection + 1 < visible) modal.project_selection += 1;
+        modal.project_dropdown_open = true;
+        return;
+    }
+    if (k.matches(vaxis.Key.tab, .{})) {
+        if (modal.project_dropdown_open and visible > 0) {
+            try acceptProjectSelection(a, modal, matches, has_use_path);
+        }
+        modal.project_dropdown_open = false;
+        modal.cycleFocus();
+        return;
+    }
+    if (k.matches(vaxis.Key.enter, .{})) {
+        if (modal.project_dropdown_open and visible > 0) {
+            try acceptProjectSelection(a, modal, matches, has_use_path);
+            modal.project_dropdown_open = false;
+            return;
+        }
+        try submitAddTodo(a, uc, state);
+        return;
+    }
+    if (k.matches(vaxis.Key.backspace, .{})) {
+        if (modal.project_buf.items.len > 0) _ = modal.project_buf.pop();
+        modal.project_selection = 0;
+        modal.project_dropdown_open = true;
+        return;
+    }
+    if (k.text) |t| {
+        try modal.project_buf.appendSlice(a, t);
+        modal.project_selection = 0;
+        modal.project_dropdown_open = true;
+        return;
+    }
+}
+
+fn exactMatch(matches: []const repo_match.Match, query: []const u8) bool {
+    for (matches) |m| {
+        if (std.mem.eql(u8, m.name, query) or std.mem.eql(u8, m.path, query)) return true;
+    }
+    return false;
+}
+
+fn acceptProjectSelection(
+    a: std.mem.Allocator,
+    modal: *state_mod.AddTodoModal,
+    matches: []const repo_match.Match,
+    has_use_path: bool,
+) !void {
+    const sel = modal.project_selection;
+    if (sel < matches.len) {
+        // Configured repo: copy its path into project_buf
+        modal.project_buf.clearRetainingCapacity();
+        try modal.project_buf.appendSlice(a, matches[sel].path);
+    } else if (has_use_path) {
+        // "Use path: X" — keep the raw input as-is (std.Io.Dir 0.16 has no realpath)
+    }
+    modal.project_selection = 0;
 }
 
 /// G1: Handle keys while the task detail panel is open.
@@ -234,12 +313,24 @@ fn handleHandoffModalKey(a: std.mem.Allocator, uc: *UseCases, state: *state_mod.
     if (k.text) |t| try m.body_buf.appendSlice(a, t);
 }
 
-fn submitModal(a: std.mem.Allocator, uc: *UseCases, state: *state_mod.State) !void {
+fn submitAddTodo(a: std.mem.Allocator, uc: *UseCases, state: *state_mod.State) !void {
     const modal = &state.add_todo_modal;
     if (modal.title_buf.items.len == 0) {
         try state.setMessage("title required");
         return;
     }
+
+    // Validate project path if provided
+    const project_raw = modal.project_buf.items;
+    if (project_raw.len > 0) {
+        _ = std.Io.Dir.statFile(std.Io.Dir.cwd(), uc.io, project_raw, .{}) catch {
+            const msg = try std.fmt.allocPrint(a, "path not found: {s}", .{project_raw});
+            defer a.free(msg);
+            try state.setMessage(msg);
+            return;
+        };
+    }
+    const project_path: ?[]const u8 = if (project_raw.len > 0) project_raw else null;
 
     const branch_hint: ?d.BranchName = if (modal.branch_buf.items.len > 0)
         d.BranchName.init(modal.branch_buf.items)
@@ -249,6 +340,7 @@ fn submitModal(a: std.mem.Allocator, uc: *UseCases, state: *state_mod.State) !vo
     const t = uc.add_todo.execute(a, .{
         .title = modal.title_buf.items,
         .branch_hint = branch_hint,
+        .project_path = project_path,
     }) catch |err| {
         const msg = try std.fmt.allocPrint(a, "add failed: {s}", .{@errorName(err)});
         defer a.free(msg);
