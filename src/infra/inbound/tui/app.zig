@@ -10,6 +10,9 @@ const app = @import("application");
 const Event = union(enum) {
     key_press: vaxis.Key,
     winsize: vaxis.Winsize,
+    tick, // posted by timer thread (Task D3)
+    focus_in, // vaxis emits when terminal regains focus
+    focus_out, // vaxis emits when terminal loses focus
 };
 
 /// Run the TUI event loop.
@@ -57,6 +60,9 @@ pub fn run(
                 try handleKey(a, uc, &state, k);
             },
             .winsize => |ws| try vx.resize(a, tty.writer(), ws),
+            .tick => {}, // wired in D3
+            .focus_in => {}, // wired in D2
+            .focus_out => {}, // intentionally no-op
         }
 
         const win = vx.window();
