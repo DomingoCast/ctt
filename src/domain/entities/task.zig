@@ -14,6 +14,7 @@ pub const Task = struct {
     issue: ?Issue,
     archived: bool,
     notes: ?[]const u8,
+    session: ?@import("../value_objects/session_handle.zig").SessionHandle = null,
     created_at: Timestamp,
     updated_at: Timestamp,
 };
@@ -32,6 +33,8 @@ pub const TaskPatch = struct {
     worktree_id: ??ids.WorktreeId = null,   // ??: outer null = no change, Some(null) = clear, Some(x) = set
     pr_id: ??ids.PrId = null,
     issue_id: ??ids.IssueId = null,
+    session: ??@import("../value_objects/session_handle.zig").SessionHandle = null,
+    // outer null = no change; Some(null) = clear; Some(x) = set
 };
 
 pub const TaskFilter = struct {
