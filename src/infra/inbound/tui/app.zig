@@ -329,7 +329,13 @@ fn doResume(a: std.mem.Allocator, uc: *UseCases, state: *state_mod.State, force_
         try state.setMessage(msg);
         return;
     };
-    defer std.Io.Dir.deleteFileAbsolute(uc.io, path) catch {};
+    // NOTE: we deliberately do NOT use defer-delete for the temp file here. The
+    // spawn below is detached (we don't wait for the child), so deleting on
+    // doResume return would race the child's $(cat ...) substitution. The file
+    // is in $XDG_RUNTIME_DIR or /tmp, both of which the OS cleans up between
+    // sessions (or on a schedule). The accumulated litter per session is bounded
+    // by how many `r` keypresses the user makes — small in practice.
+    // Non-spawn return paths below delete the file inline.
 
     const no_spawn = uc.spawn_template == null;
     const cmd = app.BuildResumeCommand.build(a, .{
@@ -341,6 +347,8 @@ fn doResume(a: std.mem.Allocator, uc: *UseCases, state: *state_mod.State, force_
         .spawn_wrapper = if (no_spawn) null else uc.spawn_template,
         .force_fresh = force_fresh,
     }) catch |err| {
+        // Build error: file was written but no spawn will happen — clean up.
+        std.Io.Dir.deleteFileAbsolute(uc.io, path) catch {};
         const msg = try std.fmt.allocPrint(a, "resume: {s}", .{@errorName(err)});
         defer a.free(msg);
         try state.setMessage(msg);
@@ -350,6 +358,8 @@ fn doResume(a: std.mem.Allocator, uc: *UseCases, state: *state_mod.State, force_
 
     if (no_spawn) {
         // No terminal multiplexer configured: show the command in the footer.
+        // File is unused — clean up.
+        std.Io.Dir.deleteFileAbsolute(uc.io, path) catch {};
         const msg = try std.fmt.allocPrint(a, "resume cmd: {s}", .{cmd.command});
         defer a.free(msg);
         try state.setMessage(msg);
@@ -357,6 +367,7 @@ fn doResume(a: std.mem.Allocator, uc: *UseCases, state: *state_mod.State, force_
     }
 
     // Detached spawn: /bin/sh -c <cmd>. The TUI keeps running; do NOT wait.
+    // Do NOT delete the temp file here — the child reads it asynchronously.
     const child = try std.process.spawn(uc.io, .{
         .argv = &[_][]const u8{ "/bin/sh", "-c", cmd.command },
         .stdin = .inherit,
