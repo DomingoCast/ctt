@@ -261,15 +261,7 @@ fn handleContext(a: std.mem.Allocator, uc: *UseCases, args: args_mod.ContextArgs
     defer {
         for (ctx.handoffs) |h| a.free(h.body);
         a.free(ctx.handoffs);
-        // task.title is heap-allocated; free it. Other optional string fields in task
-        // (notes, session.provider, session.session_id, worktree.path, pr.url.value, pr.url.value, issue.url)
-        // are freed if present.
-        a.free(ctx.task.title);
-        if (ctx.task.notes) |n| a.free(n);
-        if (ctx.task.session) |s| {
-            a.free(s.provider);
-            a.free(s.session_id);
-        }
+        app.freeTask(a, ctx.task);
     }
     if (args.json) {
         try renderContextJson(ctx, writer);

@@ -29,7 +29,7 @@ pub const GetContext = struct {
 
 // keep in sync with the other freeTask: src/infra/outbound/sqlite/task_repository.zig
 // (a proper refactor moving this to a shared module or Task.deinit is tracked separately)
-fn freeTask(a: std.mem.Allocator, t: d.Task) void {
+pub fn freeTask(a: std.mem.Allocator, t: d.Task) void {
     a.free(t.title);
     if (t.branch_hint) |b| a.free(b.value);
     if (t.notes)       |n| a.free(n);

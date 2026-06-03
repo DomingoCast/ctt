@@ -15,6 +15,7 @@ pub const AddHandoff  = @import("use_cases/add_handoff.zig").AddHandoff;
 pub const ListHandoffs = @import("use_cases/list_handoffs.zig").ListHandoffs;
 pub const GetContext  = @import("use_cases/get_context.zig").GetContext;
 pub const TaskContext = @import("use_cases/get_context.zig").TaskContext;
+pub const freeTask    = @import("use_cases/get_context.zig").freeTask;
 pub const BuildResumeCommand = @import("use_cases/build_resume_command.zig");
 
 test {
