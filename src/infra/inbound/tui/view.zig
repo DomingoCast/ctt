@@ -112,27 +112,27 @@ pub fn renderDetail(win: vaxis.Window, ds: state_mod.DetailState) void {
     row += 1;
 
     // ── Task fields ──
-    printDetailField(sub, &row, "Title   ", ds.task.title, panel_w);
+    printDetailField(sub, &row, "Title   ", ds.task.title, panel_w, panel_h);
 
-    if (ds.task.branch_hint) |b| printDetailField(sub, &row, "Branch  ", b.value, panel_w);
+    if (ds.task.branch_hint) |b| printDetailField(sub, &row, "Branch  ", b.value, panel_w, panel_h);
 
     if (ds.task.worktree) |wt| {
-        printDetailField(sub, &row, "Worktree", wt.path, panel_w);
+        printDetailField(sub, &row, "Worktree", wt.path, panel_w, panel_h);
     }
 
     if (ds.task.pr) |pr| {
-        printDetailField(sub, &row, "PR      ", pr.url.value, panel_w);
+        printDetailField(sub, &row, "PR      ", pr.url.value, panel_w, panel_h);
     }
 
     if (ds.task.issue) |iss| {
-        if (iss.url) |u| printDetailField(sub, &row, "Issue   ", u, panel_w);
+        if (iss.url) |u| printDetailField(sub, &row, "Issue   ", u, panel_w, panel_h);
     }
 
     if (ds.task.session) |sess| {
         // "Session  provider:session_id" — truncate to fit
         var buf: [128]u8 = undefined;
         const s = std.fmt.bufPrint(&buf, "{s}:{s}", .{ sess.provider, sess.session_id }) catch "...";
-        printDetailField(sub, &row, "Session ", s, panel_w);
+        printDetailField(sub, &row, "Session ", s, panel_w, panel_h);
     }
 
     // ── Separator ──
@@ -157,8 +157,8 @@ pub fn renderDetail(win: vaxis.Window, ds: state_mod.DetailState) void {
     }
 }
 
-fn printDetailField(win: vaxis.Window, row: *u16, label: []const u8, value: []const u8, win_w: u16) void {
-    if (row.* + 1 >= win_w) return; // guard: don't overflow height
+fn printDetailField(win: vaxis.Window, row: *u16, label: []const u8, value: []const u8, win_w: u16, panel_h: u16) void {
+    if (row.* + 1 >= panel_h) return; // guard: don't overflow height
     _ = win.printSegment(.{ .text = label }, .{ .row_offset = row.*, .col_offset = 2 });
     _ = win.printSegment(.{ .text = ": " }, .{ .row_offset = row.*, .col_offset = 10 });
     const max_len: usize = if (win_w > 13) win_w - 13 else 0;
