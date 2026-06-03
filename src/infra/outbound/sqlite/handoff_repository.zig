@@ -10,10 +10,10 @@ pub const SqliteHandoffRepository = struct {
     }
 
     pub fn interface(self: *SqliteHandoffRepository) d.ports.HandoffRepository {
-        return .{ .ptr = self, .vtable = &VT };
+        return .{ .ptr = self, .vtable = &vt };
     }
 
-    const VT = d.ports.HandoffRepository.VTable{
+    const vt = d.ports.HandoffRepository.VTable{
         .append = appendFn,
         .list   = listFn,
         .latest = latestFn,
