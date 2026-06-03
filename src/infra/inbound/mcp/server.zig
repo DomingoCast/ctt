@@ -61,7 +61,12 @@ fn writeToolsList(writer: *std.Io.Writer, id: std.json.Value) !void {
         "{\"name\":\"ctt_update_task\",\"description\":\"Update fields of an existing task\",\"inputSchema\":{\"type\":\"object\",\"required\":[\"id\"],\"properties\":{\"id\":{\"type\":\"integer\"},\"title\":{\"type\":\"string\"},\"branch_hint\":{\"type\":\"string\"},\"notes\":{\"type\":\"string\"}}}}," ++
         "{\"name\":\"ctt_archive_task\",\"description\":\"Archive or unarchive a task\",\"inputSchema\":{\"type\":\"object\",\"required\":[\"id\",\"archived\"],\"properties\":{\"id\":{\"type\":\"integer\"},\"archived\":{\"type\":\"boolean\"}}}}," ++
         "{\"name\":\"ctt_delete_task\",\"description\":\"Permanently delete a task\",\"inputSchema\":{\"type\":\"object\",\"required\":[\"id\"],\"properties\":{\"id\":{\"type\":\"integer\"}}}}," ++
-        "{\"name\":\"ctt_refresh\",\"description\":\"Refresh all tasks from git/GitHub/Linear\",\"inputSchema\":{\"type\":\"object\"}}" ++
+        "{\"name\":\"ctt_refresh\",\"description\":\"Refresh all tasks from git/GitHub/Linear\",\"inputSchema\":{\"type\":\"object\"}}," ++
+        "{\"name\":\"ctt_set_session_handle\",\"description\":\"Associate an LLM session id with a task. Resuming the task later (`ctt resume`) will use this handle.\",\"inputSchema\":{\"type\":\"object\",\"required\":[\"task_id\",\"provider\",\"session_id\"],\"properties\":{\"task_id\":{\"type\":\"integer\"},\"provider\":{\"type\":\"string\"},\"session_id\":{\"type\":\"string\"}}}}," ++
+        "{\"name\":\"ctt_clear_session_handle\",\"description\":\"Remove the session handle from a task.\",\"inputSchema\":{\"type\":\"object\",\"required\":[\"task_id\"],\"properties\":{\"task_id\":{\"type\":\"integer\"}}}}," ++
+        "{\"name\":\"ctt_add_handoff\",\"description\":\"Append a handoff note to a task's handoff log. Use this to leave context for the next session picking up this task.\",\"inputSchema\":{\"type\":\"object\",\"required\":[\"task_id\",\"body\"],\"properties\":{\"task_id\":{\"type\":\"integer\"},\"body\":{\"type\":\"string\"}}}}," ++
+        "{\"name\":\"ctt_list_handoffs\",\"description\":\"Return the task's handoff log entries, newest first. Optional limit.\",\"inputSchema\":{\"type\":\"object\",\"required\":[\"task_id\"],\"properties\":{\"task_id\":{\"type\":\"integer\"},\"limit\":{\"type\":\"integer\"}}}}," ++
+        "{\"name\":\"ctt_get_context\",\"description\":\"Return everything needed to resume a task: task fields, session handle, links, and handoff log. Use this when picking up a task in a fresh session.\",\"inputSchema\":{\"type\":\"object\",\"required\":[\"task_id\"],\"properties\":{\"task_id\":{\"type\":\"integer\"},\"handoff_limit\":{\"type\":\"integer\"}}}}" ++
         "]}";
     try jsonrpc.writeResponse(writer, id, result);
 }
@@ -114,6 +119,16 @@ fn handleToolsCall(
         try toolDelete(a, uc, writer, id, args);
     } else if (std.mem.eql(u8, name, "ctt_refresh")) {
         try toolRefresh(a, uc, writer, id);
+    } else if (std.mem.eql(u8, name, "ctt_set_session_handle")) {
+        try toolSetSessionHandle(a, uc, writer, id, args);
+    } else if (std.mem.eql(u8, name, "ctt_clear_session_handle")) {
+        try toolClearSessionHandle(a, uc, writer, id, args);
+    } else if (std.mem.eql(u8, name, "ctt_add_handoff")) {
+        try toolAddHandoff(a, uc, writer, id, args);
+    } else if (std.mem.eql(u8, name, "ctt_list_handoffs")) {
+        try toolListHandoffs(a, uc, writer, id, args);
+    } else if (std.mem.eql(u8, name, "ctt_get_context")) {
+        try toolGetContext(a, uc, writer, id, args);
     } else {
         try jsonrpc.writeError(writer, id, -32601, "unknown tool");
     }
@@ -377,6 +392,217 @@ fn toolRefresh(
     try jsonrpc.writeResponse(writer, id, result_buf.writer.buffered());
 }
 
+fn toolSetSessionHandle(
+    a: std.mem.Allocator,
+    uc: *UseCases,
+    writer: *std.Io.Writer,
+    id: std.json.Value,
+    args: std.json.Value,
+) !void {
+    if (args != .object) {
+        try jsonrpc.writeError(writer, id, -32602, "arguments must be object");
+        return;
+    }
+    const task_id_val = args.object.get("task_id") orelse {
+        try jsonrpc.writeError(writer, id, -32602, "missing task_id");
+        return;
+    };
+    if (task_id_val != .integer) {
+        try jsonrpc.writeError(writer, id, -32602, "task_id must be integer");
+        return;
+    }
+    const provider_val = args.object.get("provider") orelse {
+        try jsonrpc.writeError(writer, id, -32602, "missing provider");
+        return;
+    };
+    if (provider_val != .string) {
+        try jsonrpc.writeError(writer, id, -32602, "provider must be string");
+        return;
+    }
+    const session_id_val = args.object.get("session_id") orelse {
+        try jsonrpc.writeError(writer, id, -32602, "missing session_id");
+        return;
+    };
+    if (session_id_val != .string) {
+        try jsonrpc.writeError(writer, id, -32602, "session_id must be string");
+        return;
+    }
+
+    const task_id: d.ids.TaskId = @enumFromInt(task_id_val.integer);
+    _ = try uc.set_session.execute(a, task_id, .{
+        .provider = provider_val.string,
+        .session_id = session_id_val.string,
+    });
+
+    try jsonrpc.writeResponse(writer, id, "{\"content\":[{\"type\":\"text\",\"text\":\"{\\\"ok\\\":true}\"}]}");
+}
+
+fn toolClearSessionHandle(
+    a: std.mem.Allocator,
+    uc: *UseCases,
+    writer: *std.Io.Writer,
+    id: std.json.Value,
+    args: std.json.Value,
+) !void {
+    if (args != .object) {
+        try jsonrpc.writeError(writer, id, -32602, "arguments must be object");
+        return;
+    }
+    const task_id_val = args.object.get("task_id") orelse {
+        try jsonrpc.writeError(writer, id, -32602, "missing task_id");
+        return;
+    };
+    if (task_id_val != .integer) {
+        try jsonrpc.writeError(writer, id, -32602, "task_id must be integer");
+        return;
+    }
+
+    const task_id: d.ids.TaskId = @enumFromInt(task_id_val.integer);
+    _ = try uc.set_session.execute(a, task_id, null);
+
+    try jsonrpc.writeResponse(writer, id, "{\"content\":[{\"type\":\"text\",\"text\":\"{\\\"ok\\\":true}\"}]}");
+}
+
+fn toolAddHandoff(
+    a: std.mem.Allocator,
+    uc: *UseCases,
+    writer: *std.Io.Writer,
+    id: std.json.Value,
+    args: std.json.Value,
+) !void {
+    if (args != .object) {
+        try jsonrpc.writeError(writer, id, -32602, "arguments must be object");
+        return;
+    }
+    const task_id_val = args.object.get("task_id") orelse {
+        try jsonrpc.writeError(writer, id, -32602, "missing task_id");
+        return;
+    };
+    if (task_id_val != .integer) {
+        try jsonrpc.writeError(writer, id, -32602, "task_id must be integer");
+        return;
+    }
+    const body_val = args.object.get("body") orelse {
+        try jsonrpc.writeError(writer, id, -32602, "missing body");
+        return;
+    };
+    if (body_val != .string) {
+        try jsonrpc.writeError(writer, id, -32602, "body must be string");
+        return;
+    }
+
+    const task_id: d.ids.TaskId = @enumFromInt(task_id_val.integer);
+    const handoff_id = try uc.add_handoff.execute(a, task_id, body_val.string);
+
+    var result_buf: std.Io.Writer.Allocating = .init(a);
+    defer result_buf.deinit();
+    try result_buf.writer.print(
+        "{{\"content\":[{{\"type\":\"text\",\"text\":\"{{\\\"handoff_id\\\":{d}}}\"}}]}}",
+        .{handoff_id.raw()},
+    );
+    try jsonrpc.writeResponse(writer, id, result_buf.writer.buffered());
+}
+
+fn toolListHandoffs(
+    a: std.mem.Allocator,
+    uc: *UseCases,
+    writer: *std.Io.Writer,
+    id: std.json.Value,
+    args: std.json.Value,
+) !void {
+    if (args != .object) {
+        try jsonrpc.writeError(writer, id, -32602, "arguments must be object");
+        return;
+    }
+    const task_id_val = args.object.get("task_id") orelse {
+        try jsonrpc.writeError(writer, id, -32602, "missing task_id");
+        return;
+    };
+    if (task_id_val != .integer) {
+        try jsonrpc.writeError(writer, id, -32602, "task_id must be integer");
+        return;
+    }
+
+    const limit: ?usize = if (args.object.get("limit")) |lv|
+        (if (lv == .integer and lv.integer > 0) @intCast(lv.integer) else null)
+    else
+        null;
+
+    const task_id: d.ids.TaskId = @enumFromInt(task_id_val.integer);
+    const entries = try uc.list_handoffs.execute(a, task_id, limit);
+    defer {
+        for (entries) |e| a.free(e.body);
+        a.free(entries);
+    }
+
+    var entries_buf: std.Io.Writer.Allocating = .init(a);
+    defer entries_buf.deinit();
+    try renderHandoffEntriesJson(entries, &entries_buf.writer);
+
+    var result_buf: std.Io.Writer.Allocating = .init(a);
+    defer result_buf.deinit();
+    try result_buf.writer.writeAll("{\"content\":[{\"type\":\"text\",\"text\":");
+    try jsonrpc.writeJsonString(&result_buf.writer, entries_buf.writer.buffered());
+    try result_buf.writer.writeAll("}]}");
+
+    try jsonrpc.writeResponse(writer, id, result_buf.writer.buffered());
+}
+
+fn toolGetContext(
+    a: std.mem.Allocator,
+    uc: *UseCases,
+    writer: *std.Io.Writer,
+    id: std.json.Value,
+    args: std.json.Value,
+) !void {
+    if (args != .object) {
+        try jsonrpc.writeError(writer, id, -32602, "arguments must be object");
+        return;
+    }
+    const task_id_val = args.object.get("task_id") orelse {
+        try jsonrpc.writeError(writer, id, -32602, "missing task_id");
+        return;
+    };
+    if (task_id_val != .integer) {
+        try jsonrpc.writeError(writer, id, -32602, "task_id must be integer");
+        return;
+    }
+
+    const handoff_limit: ?usize = if (args.object.get("handoff_limit")) |lv|
+        (if (lv == .integer and lv.integer > 0) @intCast(lv.integer) else null)
+    else
+        null;
+
+    const task_id: d.ids.TaskId = @enumFromInt(task_id_val.integer);
+    const maybe_ctx = try uc.get_context.execute(a, task_id, handoff_limit);
+
+    var result_buf: std.Io.Writer.Allocating = .init(a);
+    defer result_buf.deinit();
+
+    if (maybe_ctx) |ctx| {
+        defer {
+            for (ctx.handoffs) |e| a.free(e.body);
+            a.free(ctx.handoffs);
+            @import("application").freeTask(a, ctx.task);
+        }
+
+        var ctx_buf: std.Io.Writer.Allocating = .init(a);
+        defer ctx_buf.deinit();
+        try renderContextJson(ctx, &ctx_buf.writer);
+
+        try result_buf.writer.writeAll("{\"content\":[{\"type\":\"text\",\"text\":");
+        try jsonrpc.writeJsonString(&result_buf.writer, ctx_buf.writer.buffered());
+        try result_buf.writer.writeAll("}]}");
+    } else {
+        try result_buf.writer.print(
+            "{{\"content\":[{{\"type\":\"text\",\"text\":\"no task #{d}\"}}]}}",
+            .{task_id_val.integer},
+        );
+    }
+
+    try jsonrpc.writeResponse(writer, id, result_buf.writer.buffered());
+}
+
 // ---------------------------------------------------------------------------
 // JSON rendering helpers
 // ---------------------------------------------------------------------------
@@ -411,6 +637,53 @@ fn renderTaskViewJson(v: app.TaskView, writer: *std.Io.Writer) !void {
         try writer.writeAll(",\"branch_hint\":");
         try jsonrpc.writeJsonString(writer, b.value);
     }
+    try writer.writeByte('}');
+}
+
+fn renderHandoffEntryJson(e: d.HandoffEntry, writer: *std.Io.Writer) !void {
+    try writer.print("{{\"id\":{d},\"task_id\":{d},\"created_at\":{d},\"body\":", .{
+        e.id.raw(), e.task_id.raw(), e.created_at.unix_secs,
+    });
+    try jsonrpc.writeJsonString(writer, e.body);
+    try writer.writeByte('}');
+}
+
+fn renderHandoffEntriesJson(entries: []const d.HandoffEntry, writer: *std.Io.Writer) !void {
+    try writer.writeByte('[');
+    for (entries, 0..) |e, i| {
+        if (i > 0) try writer.writeByte(',');
+        try renderHandoffEntryJson(e, writer);
+    }
+    try writer.writeByte(']');
+}
+
+fn renderTaskJson(t: d.Task, writer: *std.Io.Writer) !void {
+    try writer.print("{{\"id\":{d},\"title\":", .{t.id.raw()});
+    try jsonrpc.writeJsonString(writer, t.title);
+    try writer.print(",\"archived\":{}", .{t.archived});
+    if (t.notes) |n| {
+        try writer.writeAll(",\"notes\":");
+        try jsonrpc.writeJsonString(writer, n);
+    }
+    if (t.branch_hint) |b| {
+        try writer.writeAll(",\"branch_hint\":");
+        try jsonrpc.writeJsonString(writer, b.value);
+    }
+    if (t.session) |s| {
+        try writer.writeAll(",\"session\":{\"provider\":");
+        try jsonrpc.writeJsonString(writer, s.provider);
+        try writer.writeAll(",\"session_id\":");
+        try jsonrpc.writeJsonString(writer, s.session_id);
+        try writer.writeByte('}');
+    }
+    try writer.writeByte('}');
+}
+
+fn renderContextJson(ctx: app.TaskContext, writer: *std.Io.Writer) !void {
+    try writer.writeAll("{\"task\":");
+    try renderTaskJson(ctx.task, writer);
+    try writer.writeAll(",\"handoffs\":");
+    try renderHandoffEntriesJson(ctx.handoffs, writer);
     try writer.writeByte('}');
 }
 
@@ -495,6 +768,7 @@ const MiniRepo = struct {
         const existing = self.tasks.getPtr(id.raw()) orelse return error.NotFound;
         if (patch.title) |v| existing.title = v;
         if (patch.archived) |v| existing.archived = v;
+        if (patch.session) |maybe_session| existing.session = maybe_session;
         return existing.*;
     }
 
@@ -520,7 +794,89 @@ const MiniRepo = struct {
     }
 };
 
-fn buildTestUc(repo: *MiniRepo) UseCases {
+/// Minimal in-memory HandoffRepository for tests.
+const MiniHandoffRepo = struct {
+    arena: std.heap.ArenaAllocator,
+    backing: std.mem.Allocator,
+    next_id: i64 = 1,
+    entries: std.ArrayList(d.HandoffEntry),
+
+    fn init(a: std.mem.Allocator) MiniHandoffRepo {
+        return .{
+            .arena = std.heap.ArenaAllocator.init(a),
+            .backing = a,
+            .entries = .empty,
+        };
+    }
+
+    fn deinit(self: *MiniHandoffRepo) void {
+        self.entries.deinit(self.backing);
+        self.arena.deinit();
+    }
+
+    fn interface(self: *MiniHandoffRepo) d.ports.HandoffRepository {
+        return .{ .ptr = self, .vtable = &mini_hvt };
+    }
+
+    const mini_hvt = d.ports.HandoffRepository.VTable{
+        .append = miniHAppend,
+        .list   = miniHList,
+        .latest = miniHLatest,
+    };
+
+    fn miniHAppend(p: *anyopaque, _: std.mem.Allocator, draft: d.NewHandoff, now: d.Timestamp) d.ports.HandoffRepository.Error!d.ids.HandoffId {
+        const self: *MiniHandoffRepo = @ptrCast(@alignCast(p));
+        const aa = self.arena.allocator();
+        const id_val = self.next_id;
+        self.next_id += 1;
+        const e = d.HandoffEntry{
+            .id = @enumFromInt(id_val),
+            .task_id = draft.task_id,
+            .body = aa.dupe(u8, draft.body) catch return error.OutOfMemory,
+            .created_at = now,
+        };
+        self.entries.append(self.backing, e) catch return error.OutOfMemory;
+        return e.id;
+    }
+
+    fn miniHList(p: *anyopaque, a: std.mem.Allocator, task_id: d.ids.TaskId, limit: ?usize) d.ports.HandoffRepository.Error![]d.HandoffEntry {
+        const self: *MiniHandoffRepo = @ptrCast(@alignCast(p));
+        var out: std.ArrayList(d.HandoffEntry) = .empty;
+        errdefer {
+            for (out.items) |e| a.free(e.body);
+            out.deinit(a);
+        }
+        var i = self.entries.items.len;
+        var count: usize = 0;
+        while (i > 0) {
+            i -= 1;
+            const e = self.entries.items[i];
+            if (e.task_id != task_id) continue;
+            if (limit) |lim| { if (count >= lim) break; }
+            const body_owned = a.dupe(u8, e.body) catch return error.OutOfMemory;
+            out.append(a, .{ .id = e.id, .task_id = e.task_id, .body = body_owned, .created_at = e.created_at }) catch {
+                a.free(body_owned);
+                return error.OutOfMemory;
+            };
+            count += 1;
+        }
+        return out.toOwnedSlice(a) catch return error.OutOfMemory;
+    }
+
+    fn miniHLatest(_: *anyopaque, _: std.mem.Allocator, _: d.ids.TaskId) d.ports.HandoffRepository.Error!?d.HandoffEntry {
+        return null;
+    }
+};
+
+/// Minimal clock for tests — always returns epoch zero.
+const MiniClock = struct {
+    var dummy: u8 = 0;
+    const vt = d.ports.Clock.VTable{ .now = nowFn };
+    fn nowFn(_: *anyopaque) d.Timestamp { return .{ .unix_secs = 0 }; }
+    fn iface() d.ports.Clock { return .{ .ptr = &dummy, .vtable = &vt }; }
+};
+
+fn buildTestUc(repo: *MiniRepo, hrepo: *MiniHandoffRepo) UseCases {
     return UseCases{
         .add_todo = .{ .tasks = repo.interface() },
         .list_tasks = .{ .tasks = repo.interface() },
@@ -531,6 +887,10 @@ fn buildTestUc(repo: *MiniRepo) UseCases {
         .link = .{ .tasks = repo.interface() },
         .refresh = undefined,
         .repos = &.{},
+        .set_session = .{ .tasks = repo.interface() },
+        .add_handoff = .{ .handoffs = hrepo.interface(), .clock = MiniClock.iface() },
+        .list_handoffs = .{ .handoffs = hrepo.interface() },
+        .get_context = .{ .tasks = repo.interface(), .handoffs = hrepo.interface() },
     };
 }
 
@@ -553,7 +913,9 @@ test "server responds to initialize with protocolVersion" {
     const a = std.testing.allocator;
     var fake = MiniRepo.init(a);
     defer fake.deinit();
-    var uc = buildTestUc(&fake);
+    var fake_h = MiniHandoffRepo.init(a);
+    defer fake_h.deinit();
+    var uc = buildTestUc(&fake, &fake_h);
 
     const resp = try runRequest(a, &uc, "{\"jsonrpc\":\"2.0\",\"id\":1,\"method\":\"initialize\"}\n");
     defer a.free(resp);
@@ -563,11 +925,13 @@ test "server responds to initialize with protocolVersion" {
     try std.testing.expect(std.mem.indexOf(u8, resp, "2024-11-05") != null);
 }
 
-test "server responds to tools/list with all 7 tools" {
+test "server responds to tools/list with all 12 tools" {
     const a = std.testing.allocator;
     var fake = MiniRepo.init(a);
     defer fake.deinit();
-    var uc = buildTestUc(&fake);
+    var fake_h = MiniHandoffRepo.init(a);
+    defer fake_h.deinit();
+    var uc = buildTestUc(&fake, &fake_h);
 
     const resp = try runRequest(a, &uc, "{\"jsonrpc\":\"2.0\",\"id\":2,\"method\":\"tools/list\"}\n");
     defer a.free(resp);
@@ -575,13 +939,20 @@ test "server responds to tools/list with all 7 tools" {
     try std.testing.expect(std.mem.indexOf(u8, resp, "ctt_list_tasks") != null);
     try std.testing.expect(std.mem.indexOf(u8, resp, "ctt_add_todo") != null);
     try std.testing.expect(std.mem.indexOf(u8, resp, "ctt_refresh") != null);
+    try std.testing.expect(std.mem.indexOf(u8, resp, "ctt_set_session_handle") != null);
+    try std.testing.expect(std.mem.indexOf(u8, resp, "ctt_clear_session_handle") != null);
+    try std.testing.expect(std.mem.indexOf(u8, resp, "ctt_add_handoff") != null);
+    try std.testing.expect(std.mem.indexOf(u8, resp, "ctt_list_handoffs") != null);
+    try std.testing.expect(std.mem.indexOf(u8, resp, "ctt_get_context") != null);
 }
 
 test "server handles unknown method with -32601 error" {
     const a = std.testing.allocator;
     var fake = MiniRepo.init(a);
     defer fake.deinit();
-    var uc = buildTestUc(&fake);
+    var fake_h = MiniHandoffRepo.init(a);
+    defer fake_h.deinit();
+    var uc = buildTestUc(&fake, &fake_h);
 
     const resp = try runRequest(a, &uc, "{\"jsonrpc\":\"2.0\",\"id\":3,\"method\":\"no_such_method\"}\n");
     defer a.free(resp);
@@ -594,7 +965,9 @@ test "server ctt_add_todo creates task and returns id" {
     const a = std.testing.allocator;
     var fake = MiniRepo.init(a);
     defer fake.deinit();
-    var uc = buildTestUc(&fake);
+    var fake_h = MiniHandoffRepo.init(a);
+    defer fake_h.deinit();
+    var uc = buildTestUc(&fake, &fake_h);
 
     const req =
         \\{"jsonrpc":"2.0","id":4,"method":"tools/call","params":{"name":"ctt_add_todo","arguments":{"title":"my task"}}}
@@ -609,8 +982,10 @@ test "server ctt_list_tasks returns task list as text" {
     const a = std.testing.allocator;
     var fake = MiniRepo.init(a);
     defer fake.deinit();
+    var fake_h = MiniHandoffRepo.init(a);
+    defer fake_h.deinit();
     _ = try fake.interface().create(a, .{ .title = "list me" });
-    var uc = buildTestUc(&fake);
+    var uc = buildTestUc(&fake, &fake_h);
 
     const req =
         \\{"jsonrpc":"2.0","id":5,"method":"tools/call","params":{"name":"ctt_list_tasks","arguments":{}}}
@@ -625,8 +1000,10 @@ test "server ctt_delete_task removes task" {
     const a = std.testing.allocator;
     var fake = MiniRepo.init(a);
     defer fake.deinit();
+    var fake_h = MiniHandoffRepo.init(a);
+    defer fake_h.deinit();
     _ = try fake.interface().create(a, .{ .title = "to delete" });
-    var uc = buildTestUc(&fake);
+    var uc = buildTestUc(&fake, &fake_h);
 
     const req =
         \\{"jsonrpc":"2.0","id":6,"method":"tools/call","params":{"name":"ctt_delete_task","arguments":{"id":1}}}
@@ -641,7 +1018,9 @@ test "server ctt_get_task returns not found message" {
     const a = std.testing.allocator;
     var fake = MiniRepo.init(a);
     defer fake.deinit();
-    var uc = buildTestUc(&fake);
+    var fake_h = MiniHandoffRepo.init(a);
+    defer fake_h.deinit();
+    var uc = buildTestUc(&fake, &fake_h);
 
     const req =
         \\{"jsonrpc":"2.0","id":7,"method":"tools/call","params":{"name":"ctt_get_task","arguments":{"id":999}}}
@@ -656,8 +1035,10 @@ test "server ctt_archive_task archives a task" {
     const a = std.testing.allocator;
     var fake = MiniRepo.init(a);
     defer fake.deinit();
+    var fake_h = MiniHandoffRepo.init(a);
+    defer fake_h.deinit();
     _ = try fake.interface().create(a, .{ .title = "archive me" });
-    var uc = buildTestUc(&fake);
+    var uc = buildTestUc(&fake, &fake_h);
 
     const req =
         \\{"jsonrpc":"2.0","id":8,"method":"tools/call","params":{"name":"ctt_archive_task","arguments":{"id":1,"archived":true}}}
@@ -672,8 +1053,10 @@ test "server ctt_update_task updates title" {
     const a = std.testing.allocator;
     var fake = MiniRepo.init(a);
     defer fake.deinit();
+    var fake_h = MiniHandoffRepo.init(a);
+    defer fake_h.deinit();
     _ = try fake.interface().create(a, .{ .title = "old title" });
-    var uc = buildTestUc(&fake);
+    var uc = buildTestUc(&fake, &fake_h);
 
     const req =
         \\{"jsonrpc":"2.0","id":9,"method":"tools/call","params":{"name":"ctt_update_task","arguments":{"id":1,"title":"new title"}}}
@@ -682,4 +1065,59 @@ test "server ctt_update_task updates title" {
     defer a.free(resp);
 
     try std.testing.expect(std.mem.indexOf(u8, resp, "task #1 updated") != null);
+}
+
+test "server ctt_add_handoff returns handoff_id" {
+    const a = std.testing.allocator;
+    var fake = MiniRepo.init(a);
+    defer fake.deinit();
+    var fake_h = MiniHandoffRepo.init(a);
+    defer fake_h.deinit();
+    _ = try fake.interface().create(a, .{ .title = "a task" });
+    var uc = buildTestUc(&fake, &fake_h);
+
+    const req =
+        \\{"jsonrpc":"2.0","id":10,"method":"tools/call","params":{"name":"ctt_add_handoff","arguments":{"task_id":1,"body":"checkpoint note"}}}
+        ++ "\n";
+    const resp = try runRequest(a, &uc, req);
+    defer a.free(resp);
+
+    try std.testing.expect(std.mem.indexOf(u8, resp, "handoff_id") != null);
+}
+
+test "server ctt_list_handoffs returns entries" {
+    const a = std.testing.allocator;
+    var fake = MiniRepo.init(a);
+    defer fake.deinit();
+    var fake_h = MiniHandoffRepo.init(a);
+    defer fake_h.deinit();
+    _ = try fake.interface().create(a, .{ .title = "a task" });
+    const task_id: d.ids.TaskId = @enumFromInt(1);
+    _ = try fake_h.interface().append(a, .{ .task_id = task_id, .body = "note one" }, .{ .unix_secs = 0 });
+    var uc = buildTestUc(&fake, &fake_h);
+
+    const req =
+        \\{"jsonrpc":"2.0","id":11,"method":"tools/call","params":{"name":"ctt_list_handoffs","arguments":{"task_id":1}}}
+        ++ "\n";
+    const resp = try runRequest(a, &uc, req);
+    defer a.free(resp);
+
+    try std.testing.expect(std.mem.indexOf(u8, resp, "note one") != null);
+}
+
+test "server ctt_get_context returns null for missing task" {
+    const a = std.testing.allocator;
+    var fake = MiniRepo.init(a);
+    defer fake.deinit();
+    var fake_h = MiniHandoffRepo.init(a);
+    defer fake_h.deinit();
+    var uc = buildTestUc(&fake, &fake_h);
+
+    const req =
+        \\{"jsonrpc":"2.0","id":12,"method":"tools/call","params":{"name":"ctt_get_context","arguments":{"task_id":99}}}
+        ++ "\n";
+    const resp = try runRequest(a, &uc, req);
+    defer a.free(resp);
+
+    try std.testing.expect(std.mem.indexOf(u8, resp, "no task #99") != null);
 }

@@ -154,6 +154,10 @@ pub fn main(init: std.process.Init) !void {
                 .link = cli_uc.link,
                 .refresh = cli_uc.refresh,
                 .repos = repos,
+                .set_session = cli_uc.set_session,
+                .add_handoff = cli_uc.add_handoff,
+                .list_handoffs = cli_uc.list_handoffs,
+                .get_context = cli_uc.get_context,
             };
             var stdin_buf: [4096]u8 = undefined;
             var stdin_r = std.Io.File.stdin().reader(io, &stdin_buf);

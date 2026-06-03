@@ -11,4 +11,8 @@ pub const UseCases = struct {
     link: app.LinkTask,
     refresh: app.RefreshAll,
     repos: []const d.Repo,
+    set_session: app.SetSessionHandle,
+    add_handoff: app.AddHandoff,
+    list_handoffs: app.ListHandoffs,
+    get_context: app.GetContext,
 };
