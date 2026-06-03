@@ -24,8 +24,21 @@ pub const ProviderTemplates = struct {
     icon: ?[]const u8 = null,
 };
 
+pub const ColorScheme = struct {
+    todo: ?[]const u8 = null,
+    in_progress: ?[]const u8 = null,
+    in_review: ?[]const u8 = null,
+    done: ?[]const u8 = null,
+    title: ?[]const u8 = null,
+    metadata: ?[]const u8 = null,
+    idle_pulse: ?[]const u8 = null,
+};
+
 pub const UiConfig = struct {
     spawn: ?[]const u8 = null,
+    refresh_interval_ms: u32 = 2000,
+    use_nerd_glyphs: bool = true,
+    color_scheme: ColorScheme = .{},
 };
 
 pub const ProvidersConfig = struct {
@@ -315,4 +328,49 @@ test "load rejects providers.default that is not in providers.templates" {
     defer std.testing.allocator.free(path);
 
     try std.testing.expectError(error.BadFormat, load(io, std.testing.allocator, path));
+}
+
+test "load ui config with refresh interval and glyphs" {
+    var tmp = std.testing.tmpDir(.{});
+    defer tmp.cleanup();
+    const io = std.testing.io;
+    try writeTmpFile(io, tmp.dir, "c.json",
+        \\{"db_path":"/x","repos":[],"ui":{"refresh_interval_ms":1500,"use_nerd_glyphs":false}}
+    );
+    const path = try tmpRealPath(io, std.testing.allocator, tmp.dir, "c.json");
+    defer std.testing.allocator.free(path);
+    var parsed = try load(io, std.testing.allocator, path);
+    defer parsed.deinit();
+    try std.testing.expectEqual(@as(u32, 1500), parsed.value.ui.refresh_interval_ms);
+    try std.testing.expect(parsed.value.ui.use_nerd_glyphs == false);
+}
+
+test "load ui color_scheme partial override" {
+    var tmp = std.testing.tmpDir(.{});
+    defer tmp.cleanup();
+    const io = std.testing.io;
+    try writeTmpFile(io, tmp.dir, "c.json",
+        \\{"db_path":"/x","repos":[],"ui":{"color_scheme":{"todo":"#abcdef"}}}
+    );
+    const path = try tmpRealPath(io, std.testing.allocator, tmp.dir, "c.json");
+    defer std.testing.allocator.free(path);
+    var parsed = try load(io, std.testing.allocator, path);
+    defer parsed.deinit();
+    try std.testing.expectEqualStrings("#abcdef", parsed.value.ui.color_scheme.todo.?);
+    try std.testing.expect(parsed.value.ui.color_scheme.in_progress == null);
+}
+
+test "load ui defaults when ui absent" {
+    var tmp = std.testing.tmpDir(.{});
+    defer tmp.cleanup();
+    const io = std.testing.io;
+    try writeTmpFile(io, tmp.dir, "c.json",
+        \\{"db_path":"/x","repos":[]}
+    );
+    const path = try tmpRealPath(io, std.testing.allocator, tmp.dir, "c.json");
+    defer std.testing.allocator.free(path);
+    var parsed = try load(io, std.testing.allocator, path);
+    defer parsed.deinit();
+    try std.testing.expectEqual(@as(u32, 2000), parsed.value.ui.refresh_interval_ms);
+    try std.testing.expect(parsed.value.ui.use_nerd_glyphs == true);
 }
