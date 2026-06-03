@@ -515,11 +515,17 @@ fn doResume(a: std.mem.Allocator, uc: *UseCases, state: *state_mod.State, force_
 
     // Detached spawn: /bin/sh -c <cmd>. The TUI keeps running; do NOT wait.
     // Do NOT delete the temp file here — the child reads it asynchronously.
+    // If the task has a project_path, set it as the cwd of the spawned process.
+    const spawn_cwd: std.process.Child.Cwd = if (ctx.task.project_path) |p|
+        .{ .path = p }
+    else
+        .inherit;
     const child = try std.process.spawn(uc.io, .{
         .argv = &[_][]const u8{ "/bin/sh", "-c", cmd.command },
         .stdin = .inherit,
         .stdout = .inherit,
         .stderr = .inherit,
+        .cwd = spawn_cwd,
     });
     _ = child; // child.wait is intentionally omitted — detached
 
