@@ -5,7 +5,7 @@ const d = @import("domain");
 const glyphs_mod = @import("glyphs.zig");
 const theme_mod = @import("theme.zig");
 
-pub const Mode = enum { normal, add_todo_modal, detail, handoff_modal };
+pub const Mode = enum { normal, add_todo_modal, detail, handoff_modal, help_modal };
 
 pub const ModalFocus = enum { title, branch, issue };
 

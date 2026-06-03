@@ -95,6 +95,7 @@ pub fn run(
             .add_todo_modal => modal_mod.renderAddTodo(win, &state.add_todo_modal, &state),
             .detail => if (state.detail) |ds| view.renderDetail(win, ds, &state, now_ts.sec),
             .handoff_modal => if (state.handoff_modal) |*hm| modal_mod.renderHandoff(win, hm, &state),
+            .help_modal => modal_mod.renderHelp(win, &state),
             .normal => {},
         }
 
@@ -108,6 +109,13 @@ fn handleKey(a: std.mem.Allocator, uc: *UseCases, state: *state_mod.State, k: va
         .add_todo_modal => try handleModalKey(a, uc, state, k),
         .detail => try handleDetailKey(a, state, k),
         .handoff_modal => try handleHandoffModalKey(a, uc, state, k),
+        .help_modal => try handleHelpModalKey(state, k),
+    }
+}
+
+fn handleHelpModalKey(state: *state_mod.State, k: vaxis.Key) !void {
+    if (k.matches(vaxis.Key.escape, .{}) or k.matches('?', .{}) or k.matches('q', .{})) {
+        state.mode = .normal;
     }
 }
 
@@ -150,8 +158,10 @@ fn handleNormalKey(a: std.mem.Allocator, uc: *UseCases, state: *state_mod.State,
         try doArchive(a, uc, state);
     } else if (k.matches('d', .{})) {
         try doDelete(a, uc, state);
-    } else if (k.matches('a', .{})) {
+    } else if (k.matches('n', .{})) {
         state.mode = .add_todo_modal;
+    } else if (k.matches('?', .{})) {
+        state.mode = .help_modal;
     }
 }
 

@@ -101,6 +101,66 @@ pub fn renderAddTodo(win: vaxis.Window, modal: *const state_mod.AddTodoModal, st
     );
 }
 
+/// Render the help overlay listing all keybindings.
+pub fn renderHelp(win: vaxis.Window, state: *const state_mod.State) void {
+    const modal_w: u16 = @min(56, win.width -| 8);
+    const modal_h: u16 = @min(24, win.height -| 4);
+    const x_off: i17 = @intCast((win.width - modal_w) / 2);
+    const y_off: i17 = @intCast((win.height - modal_h) / 2);
+
+    const sub = win.child(.{
+        .x_off = x_off,
+        .y_off = y_off,
+        .width = modal_w,
+        .height = modal_h,
+        .border = .{
+            .where = .all,
+            .glyphs = .single_rounded,
+            .style = .{ .fg = state.colors.title.toVaxis() },
+        },
+    });
+
+    const title_style: vaxis.Cell.Style = .{ .fg = state.colors.title.toVaxis(), .bold = true };
+    const key_style: vaxis.Cell.Style = .{ .fg = state.colors.title.toVaxis() };
+    const desc_style: vaxis.Cell.Style = .{ .fg = state.colors.metadata.toVaxis() };
+    const section_style: vaxis.Cell.Style = .{ .fg = state.colors.metadata.toVaxis(), .bold = true };
+
+    _ = sub.printSegment(.{ .text = "Keybindings", .style = title_style }, .{ .row_offset = 0, .col_offset = 2 });
+
+    const rows = [_]struct { key: []const u8, desc: []const u8 }{
+        .{ .key = "Navigation", .desc = "" },
+        .{ .key = "  h / l", .desc = "move between columns" },
+        .{ .key = "  j / k", .desc = "move within column" },
+        .{ .key = "  Enter",  .desc = "open task detail" },
+        .{ .key = "", .desc = "" },
+        .{ .key = "Actions", .desc = "" },
+        .{ .key = "  n", .desc = "new task" },
+        .{ .key = "  H", .desc = "add handoff note" },
+        .{ .key = "  r", .desc = "resume task (LLM session)" },
+        .{ .key = "  R", .desc = "force fresh + context" },
+        .{ .key = "  A", .desc = "archive selected" },
+        .{ .key = "  d", .desc = "delete selected" },
+        .{ .key = "  o", .desc = "open PR in browser" },
+        .{ .key = "  g", .desc = "refresh now" },
+        .{ .key = "", .desc = "" },
+        .{ .key = "  ?", .desc = "toggle this help" },
+        .{ .key = "  Esc", .desc = "close overlay" },
+        .{ .key = "  q", .desc = "quit" },
+    };
+
+    var y: u16 = 2;
+    for (rows) |r| {
+        if (y >= modal_h -| 2) break;
+        if (r.desc.len == 0 and r.key.len > 0) {
+            _ = sub.printSegment(.{ .text = r.key, .style = section_style }, .{ .row_offset = y, .col_offset = 2 });
+        } else if (r.key.len > 0) {
+            _ = sub.printSegment(.{ .text = r.key, .style = key_style }, .{ .row_offset = y, .col_offset = 2 });
+            _ = sub.printSegment(.{ .text = r.desc, .style = desc_style }, .{ .row_offset = y, .col_offset = 14 });
+        }
+        y += 1;
+    }
+}
+
 fn renderField(win: vaxis.Window, label: []const u8, value: []const u8, focused: bool, row: u16) void {
     _ = win.printSegment(.{ .text = label }, .{ .row_offset = row, .col_offset = 2 });
     _ = win.printSegment(.{ .text = ": " }, .{ .row_offset = row, .col_offset = 9 });
