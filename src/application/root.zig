@@ -15,6 +15,12 @@ pub const AddHandoff  = @import("use_cases/add_handoff.zig").AddHandoff;
 pub const ListHandoffs = @import("use_cases/list_handoffs.zig").ListHandoffs;
 pub const GetContext  = @import("use_cases/get_context.zig").GetContext;
 pub const TaskContext = @import("use_cases/get_context.zig").TaskContext;
+pub const BuildResumeCommand = @import("use_cases/build_resume_command.zig");
+pub const build = @import("use_cases/build_resume_command.zig").build;
+pub const Inputs = @import("use_cases/build_resume_command.zig").Inputs;
+pub const ProviderTemplate = @import("use_cases/build_resume_command.zig").ProviderTemplate;
+pub const ResumeCommand = @import("use_cases/build_resume_command.zig").ResumeCommand;
+pub const BuildError = @import("use_cases/build_resume_command.zig").BuildError;
 
 test {
     _ = @import("use_cases/add_todo.zig");
@@ -30,4 +36,5 @@ test {
     _ = @import("use_cases/add_handoff.zig");
     _ = @import("use_cases/list_handoffs.zig");
     _ = @import("use_cases/get_context.zig");
+    _ = @import("use_cases/build_resume_command.zig");
 }
