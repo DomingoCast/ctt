@@ -17,9 +17,22 @@ pub const RefreshConfig = struct {
     issue_cache_ttl_secs: u32 = 300,
 };
 
+pub const ProviderTemplates = struct {
+    @"resume": ?[]const u8 = null,
+    fresh: ?[]const u8 = null,
+    /// Short string (emoji or 1-3 chars) shown on the TUI card.
+    icon: ?[]const u8 = null,
+};
+
+pub const UiConfig = struct {
+    spawn: ?[]const u8 = null,
+};
+
 pub const ProvidersConfig = struct {
     linear: LinearConfig = .{},
     patterns: []PatternConfig = &[_]PatternConfig{},
+    default: ?[]const u8 = null,
+    templates: std.json.ArrayHashMap(ProviderTemplates) = .{},
 };
 
 pub const LinearConfig = struct {
@@ -32,6 +45,7 @@ pub const Config = struct {
     repos: []RepoConfig,
     providers: ProvidersConfig = .{},
     refresh: RefreshConfig = .{},
+    ui: UiConfig = .{},
 };
 
 pub const LoadError = error{
@@ -221,4 +235,57 @@ test "loadSecretsToken reads token from 0600 file" {
     defer std.testing.allocator.free(got);
 
     try std.testing.expectEqualStrings("abc123", got);
+}
+
+test "load config with provider templates and ui" {
+    var tmp = std.testing.tmpDir(.{});
+    defer tmp.cleanup();
+
+    const io = std.testing.io;
+    try writeTmpFile(io, tmp.dir, "c.json",
+        \\{
+        \\  "db_path":"/x","repos":[],
+        \\  "providers":{
+        \\    "patterns":[],
+        \\    "default":"claude",
+        \\    "templates":{
+        \\      "claude":{"resume":"claude --resume {{session_id}}","fresh":"claude","icon":"C"}
+        \\    }
+        \\  },
+        \\  "ui":{"spawn":"tmux new-window -- {{cmd}}"}
+        \\}
+    );
+    const path = try tmpRealPath(io, std.testing.allocator, tmp.dir, "c.json");
+    defer std.testing.allocator.free(path);
+
+    var parsed = try load(io, std.testing.allocator, path);
+    defer parsed.deinit();
+
+    try std.testing.expectEqualStrings("claude", parsed.value.providers.default.?);
+
+    const tmpl_opt = parsed.value.providers.templates.map.get("claude");
+    const tmpl = tmpl_opt.?;
+    try std.testing.expectEqualStrings("claude --resume {{session_id}}", tmpl.@"resume".?);
+    try std.testing.expectEqualStrings("C", tmpl.icon.?);
+    try std.testing.expectEqualStrings("tmux new-window -- {{cmd}}", parsed.value.ui.spawn.?);
+}
+
+test "minimal config has empty templates and null defaults" {
+    var tmp = std.testing.tmpDir(.{});
+    defer tmp.cleanup();
+
+    const io = std.testing.io;
+    try writeTmpFile(io, tmp.dir, "c.json",
+        \\{"db_path":"/x","repos":[]}
+    );
+    const path = try tmpRealPath(io, std.testing.allocator, tmp.dir, "c.json");
+    defer std.testing.allocator.free(path);
+
+    var parsed = try load(io, std.testing.allocator, path);
+    defer parsed.deinit();
+
+    try std.testing.expect(parsed.value.providers.default == null);
+    try std.testing.expect(parsed.value.ui.spawn == null);
+    const tmpl_size: usize = parsed.value.providers.templates.map.count();
+    try std.testing.expectEqual(@as(usize, 0), tmpl_size);
 }
