@@ -91,9 +91,9 @@ pub fn run(
 
         // Overlay modals / panels
         switch (state.mode) {
-            .add_todo_modal => modal_mod.renderAddTodo(win, &state.add_todo_modal),
+            .add_todo_modal => modal_mod.renderAddTodo(win, &state.add_todo_modal, &state),
             .detail => if (state.detail) |ds| view.renderDetail(win, ds, &state, now_ts.sec),
-            .handoff_modal => if (state.handoff_modal) |*hm| modal_mod.renderHandoff(win, hm),
+            .handoff_modal => if (state.handoff_modal) |*hm| modal_mod.renderHandoff(win, hm, &state),
             .normal => {},
         }
 
