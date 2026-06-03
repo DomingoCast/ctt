@@ -25,4 +25,5 @@ pub const UseCases = struct {
     use_nerd_glyphs: bool = true,
     color_scheme_cfg: cfg.ColorScheme = .{},
     db_path: []const u8 = "",
+    cfg_repos: []const cfg.RepoConfig = &.{},
 };

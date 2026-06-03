@@ -59,6 +59,7 @@ pub fn run(
     state.glyphs = glyphs_mod.GlyphSet.select(uc.use_nerd_glyphs);
     state.colors = theme_mod.ColorScheme.fromConfig(uc.color_scheme_cfg);
     state.refresh_interval_ms = uc.refresh_interval_ms;
+    state.cfg_repos = uc.cfg_repos;
 
     // Initial load
     try doRefresh(a, uc, &state, true);

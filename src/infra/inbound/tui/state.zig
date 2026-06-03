@@ -74,6 +74,7 @@ pub const State = struct {
     views: []app.TaskView,
     sel: view.Selection = .{},
     mode: Mode = .normal,
+    cfg_repos: []const @import("infra_config").RepoConfig = &.{},
     /// True while doRefresh is in flight; consumed by the footer pulse (Phase F).
     refreshing: bool = false,
     last_db_mtime: i128 = 0,

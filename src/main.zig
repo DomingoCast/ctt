@@ -150,6 +150,7 @@ pub fn main(init: std.process.Init) !void {
                 .use_nerd_glyphs = cfg.ui.use_nerd_glyphs,
                 .color_scheme_cfg = cfg.ui.color_scheme,
                 .db_path = cfg.db_path,
+                .cfg_repos = cfg.repos,
             };
             try tui.run(a, io, init.environ_map, &tui_uc);
         },
