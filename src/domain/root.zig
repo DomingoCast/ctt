@@ -21,6 +21,8 @@ pub const Task               = @import("entities/task.zig").Task;
 pub const NewTask            = @import("entities/task.zig").NewTask;
 pub const TaskPatch          = @import("entities/task.zig").TaskPatch;
 pub const TaskFilter         = @import("entities/task.zig").TaskFilter;
+pub const HandoffEntry       = @import("entities/handoff.zig").HandoffEntry;
+pub const NewHandoff         = @import("entities/handoff.zig").NewHandoff;
 
 pub const derive_status = @import("services/status_derive.zig").derive;
 pub const ticket = @import("services/ticket_parse.zig");
@@ -34,7 +36,7 @@ pub const ports = struct {
     pub const Clock          = @import("ports/clock.zig").Clock;
 };
 
-test { _ = @import("entities/task.zig"); _ = @import("services/status_derive.zig"); _ = @import("services/ticket_parse.zig"); _ = @import("services/hints.zig"); _ = @import("value_objects/session_handle.zig"); }
+test { _ = @import("entities/task.zig"); _ = @import("entities/handoff.zig"); _ = @import("services/status_derive.zig"); _ = @import("services/ticket_parse.zig"); _ = @import("services/hints.zig"); _ = @import("value_objects/session_handle.zig"); }
 
 test "Clock vtable round-trip" {
     const std = @import("std");
