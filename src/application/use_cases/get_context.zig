@@ -56,6 +56,7 @@ pub fn freeTask(a: std.mem.Allocator, t: d.Task) void {
         a.free(s.provider);
         a.free(s.session_id);
     }
+    if (t.project_path) |pp| a.free(pp);
 }
 
 test "GetContext returns null when task not found" {

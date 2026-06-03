@@ -110,6 +110,9 @@ pub const FakeTaskRepo = struct {
         if (patch.session) |maybe_s| {
             existing.session = maybe_s;
         }
+        if (patch.project_path) |maybe_pp| {
+            existing.project_path = maybe_pp;
+        }
         return existing.*;
     }
 
