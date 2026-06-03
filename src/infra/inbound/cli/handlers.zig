@@ -405,6 +405,10 @@ fn renderTaskJson(t: d.Task, writer: anytype) !void {
         try writeJsonString(writer, s.session_id);
         try writer.writeAll("}");
     }
+    if (t.project_path) |p| {
+        try writer.writeAll(",\"project_path\":");
+        try writeJsonString(writer, p);
+    }
     try writer.writeAll("}");
 }
 

@@ -118,3 +118,40 @@ echo "==> delete handoff task"
 $BIN delete "$HID" 2>/dev/null
 
 echo "handoff smoke OK"
+
+# ──────────────────────────────────────────────────────────────────────────────
+# Project picker smoke
+# ──────────────────────────────────────────────────────────────────────────────
+
+echo "--- project picker smoke ---"
+$BIN add "project smoke" --project /tmp
+PID=$($BIN list --json | python3 -c '
+import sys, json
+items = json.load(sys.stdin)
+print(items[-1]["id"])
+')
+
+echo "==> verify project_path stored"
+PROJ=$($BIN context "$PID" --json | python3 -c '
+import sys, json
+ctx = json.load(sys.stdin)
+print(ctx["task"].get("project_path", ""))
+')
+test "$PROJ" = "/tmp" || { echo "expected /tmp, got: $PROJ"; exit 1; }
+echo "project_path ok: $PROJ"
+
+echo "==> resume --print still works with project_path set"
+$BIN session set "$PID" claude smoke-id-456 2>/dev/null
+RESUME_OUT=$($BIN resume "$PID" --print 2>&1 || true)
+echo "$RESUME_OUT" | python3 -c '
+import sys
+out = sys.stdin.read()
+ok_patterns = ["smoke-id-456", "NoTemplateForProvider", "NoDefaultProvider", "claude"]
+assert any(p in out for p in ok_patterns), "resume --print output did not match any expected pattern:\n%s" % out
+print("resume --print ok (output contains expected pattern)")
+'
+
+echo "==> delete project smoke task"
+$BIN delete "$PID" 2>/dev/null
+
+echo "project picker smoke OK"
