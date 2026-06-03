@@ -45,6 +45,7 @@ fn handleAdd(a: std.mem.Allocator, uc: *UseCases, args: args_mod.AddArgs, writer
         .branch_hint = branch_name,
         .project_path = args.project,
     });
+    defer app.freeTask(a, t);
     try writer.print("created task #{d}: {s}\n", .{ t.id.raw(), t.title });
 }
 
@@ -54,7 +55,10 @@ fn handleList(a: std.mem.Allocator, uc: *UseCases, args: args_mod.ListArgs, writ
     if (args.status) |s| filter.status = parseStatus(s);
 
     const views = try uc.list_tasks.execute(a, filter);
-    defer a.free(views);
+    defer {
+        for (views) |v| app.freeTask(a, v.task);
+        a.free(views);
+    }
 
     if (args.json) {
         try renderJson(views, writer);
@@ -456,14 +460,14 @@ const MiniRepo = struct {
         .upsert_issue = miniUpsertIssue,
     };
 
-    fn miniCreate(p: *anyopaque, _: std.mem.Allocator, draft: d.NewTask) d.ports.TaskRepository.Error!d.Task {
+    fn miniCreate(p: *anyopaque, a: std.mem.Allocator, draft: d.NewTask) d.ports.TaskRepository.Error!d.Task {
         const self: *MiniRepo = @ptrCast(@alignCast(p));
-        const aa = self.arena.allocator();
         const id_val = self.next_id;
         self.next_id += 1;
+        const title = a.dupe(u8, draft.title) catch return error.OutOfMemory;
         const t = d.Task{
             .id = @enumFromInt(id_val),
-            .title = aa.dupe(u8, draft.title) catch return error.OutOfMemory,
+            .title = title,
             .branch_hint = draft.branch_hint,
             .worktree = null,
             .pr = null,
@@ -475,7 +479,10 @@ const MiniRepo = struct {
             .created_at = .{ .unix_secs = 0 },
             .updated_at = .{ .unix_secs = 0 },
         };
-        self.tasks.put(id_val, t) catch return error.OutOfMemory;
+        self.tasks.put(id_val, t) catch {
+            a.free(title);
+            return error.OutOfMemory;
+        };
         return t;
     }
 
