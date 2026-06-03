@@ -240,8 +240,13 @@ fn handleHandoff(a: std.mem.Allocator, uc: *UseCases, args: args_mod.HandoffArgs
     }
 
     // Write path: --note or stdin
-    const body = if (args.note) |n| try a.dupe(u8, n) else try readStdinAll(a);
-    defer a.free(body);
+    // Trim trailing \r\n unconditionally: shell argv splitting means --note args never
+    // carry a trailing newline, so trimRight is a no-op there. For stdin (pipe/heredoc)
+    // the trim removes the extra newline that would otherwise produce a double blank line
+    // when the body is printed by `ctt handoff <id> --latest`.
+    const body_raw = if (args.note) |n| try a.dupe(u8, n) else try readStdinAll(a);
+    defer a.free(body_raw);
+    const body = std.mem.trimRight(u8, body_raw, "\r\n");
     if (body.len == 0) return error.MissingArg;
     const id = try uc.add_handoff.execute(a, tid, body);
     try writer.print("handoff #{d} added to task #{d}\n", .{ id.raw(), args.id });
