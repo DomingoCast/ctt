@@ -56,6 +56,7 @@ pub const v1: [*:0]const u8 =
 ;
 
 pub const v2: [*:0]const u8 =
+    \\BEGIN;
     \\ALTER TABLE tasks ADD COLUMN session_provider TEXT;
     \\ALTER TABLE tasks ADD COLUMN session_id TEXT;
     \\CREATE TABLE IF NOT EXISTS handoffs (
@@ -67,4 +68,5 @@ pub const v2: [*:0]const u8 =
     \\CREATE INDEX IF NOT EXISTS handoffs_task_created
     \\    ON handoffs(task_id, created_at DESC);
     \\PRAGMA user_version = 2;
+    \\COMMIT;
 ;
