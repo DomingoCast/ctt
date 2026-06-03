@@ -2,6 +2,8 @@ const std = @import("std");
 const app = @import("application");
 const view = @import("view.zig");
 const d = @import("domain");
+const glyphs_mod = @import("glyphs.zig");
+const theme_mod = @import("theme.zig");
 
 pub const Mode = enum { normal, add_todo_modal, detail, handoff_modal };
 
@@ -67,6 +69,11 @@ pub const State = struct {
     sel: view.Selection = .{},
     mode: Mode = .normal,
     refreshing: bool = false,
+    last_db_mtime: i128 = 0,
+    spinner_frame: u8 = 0,
+    glyphs: glyphs_mod.GlyphSet = glyphs_mod.GlyphSet.nerd,
+    colors: theme_mod.ColorScheme = theme_mod.ColorScheme.default,
+    refresh_interval_ms: u32 = 2000,
     last_message: ?[]const u8 = null,
     add_todo_modal: AddTodoModal = .{},
     detail: ?DetailState = null,
