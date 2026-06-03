@@ -1,4 +1,6 @@
 const std = @import("std");
+const d = @import("domain");
+const glyphs_mod = @import("glyphs.zig");
 
 /// If `text` (UTF-8 byte count) exceeds `max`, truncate to a length that leaves room for a
 /// trailing `…` (caller appends it). Returns `text` if it fits or `max < 3`.
@@ -94,4 +96,124 @@ test "shouldRefresh mtime unchanged false" {
 
 test "shouldRefresh mtime changed true" {
     try std.testing.expect(shouldRefresh(100, 200, false));
+}
+
+pub const FooterField = struct {
+    glyph: []const u8,
+    text: []const u8,
+};
+
+/// Compute the per-column footer fields for a card.
+/// `out` is caller-supplied storage with capacity ≥ 4.
+/// `time_buf` is borrowed for relative-time formatting and small integer formatting.
+/// All returned `text` slices either point into task fields (unowned here) or into `time_buf`.
+pub fn cardFooterFields(
+    task: d.Task,
+    status: d.Status,
+    glyphs: glyphs_mod.GlyphSet,
+    now_unix: i64,
+    out: []FooterField,
+    time_buf: []u8,
+) []FooterField {
+    var n: usize = 0;
+    switch (status) {
+        .todo => {
+            const text: []const u8 = if (task.branch_hint) |b| b.value else "—";
+            out[n] = .{ .glyph = glyphs.branch, .text = text };
+            n += 1;
+        },
+        .in_progress => {
+            if (task.worktree) |w| {
+                out[n] = .{ .glyph = glyphs.repo, .text = w.repo.name };
+                n += 1;
+                if (w.commits_ahead_of_default > 0 and n < out.len) {
+                    const txt = std.fmt.bufPrint(time_buf, "{d}↑", .{w.commits_ahead_of_default}) catch "";
+                    out[n] = .{ .glyph = "", .text = txt };
+                    n += 1;
+                }
+            }
+        },
+        .in_review => {
+            if (task.pr) |pr| {
+                const txt = std.fmt.bufPrint(time_buf, "#{d}", .{pr.number}) catch "";
+                out[n] = .{ .glyph = glyphs.pr, .text = txt };
+                n += 1;
+            }
+            if (task.issue) |iss| {
+                if (n < out.len) {
+                    out[n] = .{ .glyph = glyphs.issue, .text = iss.external_id };
+                    n += 1;
+                }
+            }
+        },
+        .done => {
+            const then: i64 = if (task.pr) |pr| pr.updated_at.unix_secs else task.updated_at.unix_secs;
+            const txt = formatRelativeTime(time_buf, then, now_unix);
+            out[n] = .{ .glyph = "", .text = txt };
+            n += 1;
+        },
+        .archived => {},
+    }
+    return out[0..n];
+}
+
+test "cardFooterFields TODO shows branch_hint" {
+    var out: [4]FooterField = undefined;
+    var time_buf: [16]u8 = undefined;
+    const task = d.Task{
+        .id = @enumFromInt(1),
+        .title = "t",
+        .branch_hint = .{ .value = "feat/x" },
+        .worktree = null,
+        .pr = null,
+        .issue = null,
+        .archived = false,
+        .notes = null,
+        .session = null,
+        .created_at = .{ .unix_secs = 0 },
+        .updated_at = .{ .unix_secs = 0 },
+    };
+    const got = cardFooterFields(task, .todo, glyphs_mod.GlyphSet.ascii, 100, &out, &time_buf);
+    try std.testing.expectEqual(@as(usize, 1), got.len);
+    try std.testing.expectEqualStrings("feat/x", got[0].text);
+}
+
+test "cardFooterFields TODO no branch shows em-dash" {
+    var out: [4]FooterField = undefined;
+    var time_buf: [16]u8 = undefined;
+    const task = d.Task{
+        .id = @enumFromInt(1),
+        .title = "t",
+        .branch_hint = null,
+        .worktree = null,
+        .pr = null,
+        .issue = null,
+        .archived = false,
+        .notes = null,
+        .session = null,
+        .created_at = .{ .unix_secs = 0 },
+        .updated_at = .{ .unix_secs = 0 },
+    };
+    const got = cardFooterFields(task, .todo, glyphs_mod.GlyphSet.ascii, 100, &out, &time_buf);
+    try std.testing.expectEqualStrings("—", got[0].text);
+}
+
+test "cardFooterFields DONE shows relative time" {
+    var out: [4]FooterField = undefined;
+    var time_buf: [16]u8 = undefined;
+    const task = d.Task{
+        .id = @enumFromInt(1),
+        .title = "t",
+        .branch_hint = null,
+        .worktree = null,
+        .pr = null,
+        .issue = null,
+        .archived = false,
+        .notes = null,
+        .session = null,
+        .created_at = .{ .unix_secs = 0 },
+        .updated_at = .{ .unix_secs = 100 },
+    };
+    const got = cardFooterFields(task, .done, glyphs_mod.GlyphSet.ascii, 100, &out, &time_buf);
+    try std.testing.expectEqualStrings("just now", got[0].text);
 }
