@@ -6,3 +6,4 @@ pub const PrId        = enum(i64) { _, pub fn raw(self: PrId) i64 { return @intF
 pub const IssueId     = enum(i64) { _, pub fn raw(self: IssueId) i64 { return @intFromEnum(self); } };
 pub const RepoId      = enum(i64) { _, pub fn raw(self: RepoId) i64 { return @intFromEnum(self); } };
 pub const ProviderId  = []const u8; // e.g. "linear", "jira"
+pub const HandoffId   = enum(i64) { _, pub fn raw(self: HandoffId) i64 { return @intFromEnum(self); } };
