@@ -50,6 +50,7 @@ pub fn main(init: std.process.Init) !void {
 
     // === Instantiate adapters ===
     var task_repo = sqlite.SqliteTaskRepository.init(&db);
+    var handoff_repo = sqlite.SqliteHandoffRepository.init(&db);
     var git_reader = git.GitWorktreeReader.init(io);
     var gh_gateway = gh.GhPrGateway.init(io);
     var linear_gateway = linear.LinearIssueGateway.init(a, io, token);
@@ -98,6 +99,10 @@ pub fn main(init: std.process.Init) !void {
             .patterns = patterns,
         },
         .repos = repos,
+        .set_session = .{ .tasks = task_repo.interface() },
+        .add_handoff = .{ .handoffs = handoff_repo.interface(), .clock = SystemClock.iface() },
+        .list_handoffs = .{ .handoffs = handoff_repo.interface() },
+        .get_context = .{ .tasks = task_repo.interface(), .handoffs = handoff_repo.interface() },
     };
 
     // === Parse command ===

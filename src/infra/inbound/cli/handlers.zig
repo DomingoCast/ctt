@@ -27,6 +27,10 @@ pub fn dispatch(
         .refresh => try handleRefresh(a, uc, writer),
         .open => |args| try handleOpen(a, uc, args, writer),
         .config => |args| try handleConfig(a, uc, args, writer),
+        .session => |args| try handleSession(a, uc, args, writer),
+        .handoff => |args| try handleHandoff(a, uc, args, writer),
+        .context => |args| try handleContext(a, uc, args, writer),
+        .@"resume" => |args| try handleResume(a, uc, args, writer),
     }
 }
 
@@ -195,6 +199,145 @@ fn handleConfig(a: std.mem.Allocator, uc: *UseCases, args: args_mod.ConfigCmd, w
     }
 }
 
+fn handleSession(a: std.mem.Allocator, uc: *UseCases, args: args_mod.SessionArgs, writer: anytype) !void {
+    switch (args) {
+        .set => |s| {
+            _ = try uc.set_session.execute(a, @enumFromInt(s.id), .{ .provider = s.provider, .session_id = s.session_id });
+            try writer.print("session set on task #{d}: {s}:{s}\n", .{ s.id, s.provider, s.session_id });
+        },
+        .clear => |c| {
+            _ = try uc.set_session.execute(a, @enumFromInt(c.id), null);
+            try writer.print("session cleared on task #{d}\n", .{c.id});
+        },
+    }
+}
+
+fn handleHandoff(a: std.mem.Allocator, uc: *UseCases, args: args_mod.HandoffArgs, writer: anytype) !void {
+    const tid: d.ids.TaskId = @enumFromInt(args.id);
+
+    if (args.list) {
+        const all = try uc.list_handoffs.execute(a, tid, @as(?usize, null));
+        defer {
+            for (all) |h| a.free(h.body);
+            a.free(all);
+        }
+        if (args.json) {
+            try renderHandoffsJson(all, writer);
+            try writer.writeByte('\n');
+        } else {
+            for (all) |h| try writer.print("[{d}] {s}\n", .{ h.created_at.unix_secs, h.body });
+        }
+        return;
+    }
+    if (args.latest) {
+        const maybe = try uc.list_handoffs.execute(a, tid, @as(?usize, 1));
+        defer {
+            for (maybe) |h| a.free(h.body);
+            a.free(maybe);
+        }
+        if (maybe.len > 0) try writer.print("{s}\n", .{maybe[0].body});
+        return;
+    }
+
+    // Write path: --note or stdin
+    const body = if (args.note) |n| try a.dupe(u8, n) else try readStdinAll(a);
+    defer a.free(body);
+    if (body.len == 0) return error.MissingArg;
+    const id = try uc.add_handoff.execute(a, tid, body);
+    try writer.print("handoff #{d} added to task #{d}\n", .{ id.raw(), args.id });
+}
+
+fn handleContext(a: std.mem.Allocator, uc: *UseCases, args: args_mod.ContextArgs, writer: anytype) !void {
+    const limit: ?usize = if (args.handoff_limit) |l| @intCast(l) else null;
+    const ctx = try uc.get_context.execute(a, @enumFromInt(args.id), limit) orelse {
+        try writer.print("no task with id {d}\n", .{args.id});
+        return;
+    };
+    defer {
+        for (ctx.handoffs) |h| a.free(h.body);
+        a.free(ctx.handoffs);
+        // task.title is heap-allocated; free it. Other optional string fields in task
+        // (notes, session.provider, session.session_id, worktree.path, pr.url.value, pr.url.value, issue.url)
+        // are freed if present.
+        a.free(ctx.task.title);
+        if (ctx.task.notes) |n| a.free(n);
+        if (ctx.task.session) |s| {
+            a.free(s.provider);
+            a.free(s.session_id);
+        }
+    }
+    if (args.json) {
+        try renderContextJson(ctx, writer);
+        try writer.writeByte('\n');
+    } else {
+        try renderContextText(ctx, writer);
+    }
+}
+
+fn handleResume(a: std.mem.Allocator, uc: *UseCases, args: args_mod.ResumeArgs, writer: anytype) !void {
+    // Implemented in Task E3 (depends on config + template-lookup wiring).
+    _ = a;
+    _ = uc;
+    _ = args;
+    try writer.writeAll("resume not yet wired\n");
+}
+
+fn readStdinAll(a: std.mem.Allocator) ![]u8 {
+    var out: std.ArrayList(u8) = .empty;
+    errdefer out.deinit(a);
+    var buf: [4096]u8 = undefined;
+    while (true) {
+        const n = try std.posix.read(std.posix.STDIN_FILENO, &buf);
+        if (n == 0) break;
+        try out.appendSlice(a, buf[0..n]);
+    }
+    return out.toOwnedSlice(a);
+}
+
+fn renderHandoffsJson(items: []const d.HandoffEntry, writer: anytype) !void {
+    try writer.writeAll("[");
+    for (items, 0..) |h, i| {
+        if (i > 0) try writer.writeAll(",");
+        try writer.print("{{\"id\":{d},\"task_id\":{d},\"created_at\":{d},\"body\":", .{
+            h.id.raw(), h.task_id.raw(), h.created_at.unix_secs,
+        });
+        try writeJsonString(writer, h.body);
+        try writer.writeAll("}");
+    }
+    try writer.writeAll("]");
+}
+
+fn renderContextText(ctx: app.TaskContext, writer: anytype) !void {
+    try writer.print("Task #{d}: {s}\n", .{ ctx.task.id.raw(), ctx.task.title });
+    if (ctx.task.session) |s| try writer.print("  Session: {s}:{s}\n", .{ s.provider, s.session_id });
+    if (ctx.task.worktree) |w| try writer.print("  Worktree: {s}\n", .{w.path});
+    if (ctx.task.pr) |pr| try writer.print("  PR: {s} ({s})\n", .{ pr.url.value, @tagName(pr.state) });
+    try writer.print("Handoffs ({d}):\n", .{ctx.handoffs.len});
+    for (ctx.handoffs) |h| try writer.print("  [{d}] {s}\n", .{ h.created_at.unix_secs, h.body });
+}
+
+fn renderContextJson(ctx: app.TaskContext, writer: anytype) !void {
+    try writer.writeAll("{\"task\":");
+    try renderTaskJson(ctx.task, writer);
+    try writer.writeAll(",\"handoffs\":");
+    try renderHandoffsJson(ctx.handoffs, writer);
+    try writer.writeAll("}");
+}
+
+fn renderTaskJson(t: d.Task, writer: anytype) !void {
+    try writer.print("{{\"id\":{d},\"title\":", .{t.id.raw()});
+    try writeJsonString(writer, t.title);
+    try writer.print(",\"archived\":{}", .{t.archived});
+    if (t.session) |s| {
+        try writer.writeAll(",\"session\":{\"provider\":");
+        try writeJsonString(writer, s.provider);
+        try writer.writeAll(",\"session_id\":");
+        try writeJsonString(writer, s.session_id);
+        try writer.writeAll("}");
+    }
+    try writer.writeAll("}");
+}
+
 // ---------------------------------------------------------------------------
 // Tests
 // ---------------------------------------------------------------------------
@@ -316,6 +459,10 @@ fn buildTestUc(repo: *MiniRepo) UseCases {
         .link = .{ .tasks = repo.interface() },
         .refresh = undefined,
         .repos = &.{},
+        .set_session = undefined,
+        .add_handoff = undefined,
+        .list_handoffs = undefined,
+        .get_context = undefined,
     };
 }
 
