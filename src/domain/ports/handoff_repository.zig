@@ -12,7 +12,7 @@ pub const HandoffRepository = struct {
 
     pub const VTable = struct {
         append: *const fn (ptr: *anyopaque, a: std.mem.Allocator, draft: handoff.NewHandoff, now: Timestamp) Error!ids.HandoffId,
-        list:   *const fn (ptr: *anyopaque, a: std.mem.Allocator, task_id: ids.TaskId, limit: ?u32) Error![]handoff.HandoffEntry,
+        list:   *const fn (ptr: *anyopaque, a: std.mem.Allocator, task_id: ids.TaskId, limit: ?usize) Error![]handoff.HandoffEntry,
         latest: *const fn (ptr: *anyopaque, a: std.mem.Allocator, task_id: ids.TaskId) Error!?handoff.HandoffEntry,
     };
 
@@ -22,7 +22,7 @@ pub const HandoffRepository = struct {
     pub fn append(self: HandoffRepository, a: std.mem.Allocator, draft: handoff.NewHandoff, now: Timestamp) Error!ids.HandoffId {
         return self.vtable.append(self.ptr, a, draft, now);
     }
-    pub fn list(self: HandoffRepository, a: std.mem.Allocator, task_id: ids.TaskId, limit: ?u32) Error![]handoff.HandoffEntry {
+    pub fn list(self: HandoffRepository, a: std.mem.Allocator, task_id: ids.TaskId, limit: ?usize) Error![]handoff.HandoffEntry {
         return self.vtable.list(self.ptr, a, task_id, limit);
     }
     pub fn latest(self: HandoffRepository, a: std.mem.Allocator, task_id: ids.TaskId) Error!?handoff.HandoffEntry {
