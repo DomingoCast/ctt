@@ -86,7 +86,7 @@ pub fn load(io: std.Io, a: std.mem.Allocator, path: []const u8) LoadError!std.js
     };
     defer a.free(text);
 
-    const parsed = std.json.parseFromSlice(Config, a, text, .{
+    var parsed = std.json.parseFromSlice(Config, a, text, .{
         .allocate = .alloc_always,
         .ignore_unknown_fields = true,
     }) catch |e| return switch (e) {
@@ -100,6 +100,11 @@ pub fn load(io: std.Io, a: std.mem.Allocator, path: []const u8) LoadError!std.js
             return error.BadFormat;
         }
     }
+
+    // Clamp refresh_interval_ms to [500, 60000] per spec §7
+    const ui = &parsed.value.ui;
+    if (ui.refresh_interval_ms < 500) ui.refresh_interval_ms = 500;
+    if (ui.refresh_interval_ms > 60000) ui.refresh_interval_ms = 60000;
 
     return parsed;
 }
@@ -373,4 +378,40 @@ test "load ui defaults when ui absent" {
     defer parsed.deinit();
     try std.testing.expectEqual(@as(u32, 2000), parsed.value.ui.refresh_interval_ms);
     try std.testing.expect(parsed.value.ui.use_nerd_glyphs == true);
+}
+
+test "load clamps refresh_interval_ms to [500, 60000]" {
+    var tmp = std.testing.tmpDir(.{});
+    defer tmp.cleanup();
+    const io = std.testing.io;
+
+    // Too small → 500
+    try writeTmpFile(io, tmp.dir, "low.json",
+        \\{"db_path":"/x","repos":[],"ui":{"refresh_interval_ms":100}}
+    );
+    const low_path = try tmpRealPath(io, std.testing.allocator, tmp.dir, "low.json");
+    defer std.testing.allocator.free(low_path);
+    var low = try load(io, std.testing.allocator, low_path);
+    defer low.deinit();
+    try std.testing.expectEqual(@as(u32, 500), low.value.ui.refresh_interval_ms);
+
+    // Too large → 60000
+    try writeTmpFile(io, tmp.dir, "high.json",
+        \\{"db_path":"/x","repos":[],"ui":{"refresh_interval_ms":999999}}
+    );
+    const high_path = try tmpRealPath(io, std.testing.allocator, tmp.dir, "high.json");
+    defer std.testing.allocator.free(high_path);
+    var high = try load(io, std.testing.allocator, high_path);
+    defer high.deinit();
+    try std.testing.expectEqual(@as(u32, 60000), high.value.ui.refresh_interval_ms);
+
+    // In range passes through
+    try writeTmpFile(io, tmp.dir, "ok.json",
+        \\{"db_path":"/x","repos":[],"ui":{"refresh_interval_ms":3000}}
+    );
+    const ok_path = try tmpRealPath(io, std.testing.allocator, tmp.dir, "ok.json");
+    defer std.testing.allocator.free(ok_path);
+    var ok = try load(io, std.testing.allocator, ok_path);
+    defer ok.deinit();
+    try std.testing.expectEqual(@as(u32, 3000), ok.value.ui.refresh_interval_ms);
 }
