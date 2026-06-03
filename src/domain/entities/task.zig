@@ -14,7 +14,7 @@ pub const Task = struct {
     issue: ?Issue,
     archived: bool,
     notes: ?[]const u8,
-    session: ?@import("../value_objects/session_handle.zig").SessionHandle = null,
+    session: ?@import("../value_objects/session_handle.zig").SessionHandle,
     created_at: Timestamp,
     updated_at: Timestamp,
 };

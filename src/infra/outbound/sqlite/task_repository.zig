@@ -640,6 +640,7 @@ fn rowToTask(a: std.mem.Allocator, row: zqlite.Row) !d.Task {
         .issue       = issue,
         .archived    = archived_int != 0,
         .notes       = notes,
+        .session     = null,
         .created_at  = .{ .unix_secs = parseUnixSecs(created_raw) },
         .updated_at  = .{ .unix_secs = parseUnixSecs(updated_raw) },
     };

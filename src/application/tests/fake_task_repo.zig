@@ -67,6 +67,7 @@ pub const FakeTaskRepo = struct {
             .issue = null,
             .archived = false,
             .notes = if (draft.notes) |n| aa.dupe(u8, n) catch return error.OutOfMemory else null,
+            .session = null,
             .created_at = .{ .unix_secs = 0 },
             .updated_at = .{ .unix_secs = 0 },
         };

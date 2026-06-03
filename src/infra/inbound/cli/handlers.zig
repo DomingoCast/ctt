@@ -253,6 +253,7 @@ const MiniRepo = struct {
             .issue = null,
             .archived = false,
             .notes = null,
+            .session = null,
             .created_at = .{ .unix_secs = 0 },
             .updated_at = .{ .unix_secs = 0 },
         };
@@ -381,6 +382,7 @@ test "renderJson escapes quotes, backslashes, and control chars" {
             .issue = null,
             .archived = false,
             .notes = null,
+            .session = null,
             .created_at = .{ .unix_secs = 0 },
             .updated_at = .{ .unix_secs = 0 },
         },
