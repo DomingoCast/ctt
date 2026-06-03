@@ -520,13 +520,18 @@ fn doResume(a: std.mem.Allocator, uc: *UseCases, state: *state_mod.State, force_
         .{ .path = p }
     else
         .inherit;
-    const child = try std.process.spawn(uc.io, .{
+    const child = std.process.spawn(uc.io, .{
         .argv = &[_][]const u8{ "/bin/sh", "-c", cmd.command },
         .stdin = .inherit,
         .stdout = .inherit,
         .stderr = .inherit,
         .cwd = spawn_cwd,
-    });
+    }) catch |err| {
+        const msg = try std.fmt.allocPrint(a, "resume failed: {s}", .{@errorName(err)});
+        defer a.free(msg);
+        try state.setMessage(msg);
+        return;
+    };
     _ = child; // child.wait is intentionally omitted — detached
 
     const mode_str = if (force_fresh) "force-fresh" else "resume";
