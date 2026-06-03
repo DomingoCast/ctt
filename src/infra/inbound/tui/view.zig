@@ -183,85 +183,83 @@ pub fn render(
     }
 }
 
-/// Draw a bordered detail panel for the selected task (G1).
-/// Shows task fields + up to 10 handoff bodies. ASCII only.
-pub fn renderDetail(win: vaxis.Window, ds: state_mod.DetailState) void {
-    const panel_w: u16 = @min(72, win.width);
-    const panel_h: u16 = @min(24, win.height);
-    const x_off: i17 = @intCast((win.width -| panel_w) / 2);
-    const y_off: i17 = @intCast((win.height -| panel_h) / 2);
+/// Draw a styled bordered detail panel for the selected task.
+/// Uses the column accent color for the border, section headers in title color bold,
+/// Nerd Font glyphs for field labels, and relative timestamps on handoff entries.
+pub fn renderDetail(
+    win: vaxis.Window,
+    ds: state_mod.DetailState,
+    state: *const state_mod.State,
+    now_unix: i64,
+) void {
+    win.clear();
+    const status = d.derive_status(ds.task);
+    const accent = state.colors.forColumn(status);
 
     const sub = win.child(.{
-        .x_off = x_off,
-        .y_off = y_off,
-        .width = panel_w,
-        .height = panel_h,
-        .border = .{ .where = .all },
+        .x_off = 4,
+        .y_off = 2,
+        .width = win.width -| 8,
+        .height = win.height -| 4,
+        .border = .{
+            .where = .all,
+            .glyphs = .single_rounded,
+            .style = .{ .fg = accent.toVaxis() },
+        },
     });
 
-    var row: u16 = 0;
+    var row: u16 = 1;
+    const title_style: vaxis.Cell.Style = .{ .fg = state.colors.title.toVaxis(), .bold = true };
+    const meta_style: vaxis.Cell.Style = .{ .fg = state.colors.metadata.toVaxis() };
 
-    // Title header
-    _ = sub.printSegment(
-        .{ .text = "Task Detail (Enter/Esc to close)", .style = .{ .bold = true } },
-        .{ .row_offset = row, .col_offset = 2 },
-    );
+    // Title
+    _ = sub.printSegment(.{ .text = ds.task.title, .style = title_style }, .{ .row_offset = row, .col_offset = 2 });
+    row += 2;
+
+    if (ds.task.session) |s| {
+        var buf: [128]u8 = undefined;
+        const line = std.fmt.bufPrint(&buf, "{s} Session  {s}:{s}", .{ state.glyphs.ai, s.provider, s.session_id }) catch return;
+        _ = sub.printSegment(.{ .text = line, .style = meta_style }, .{ .row_offset = row, .col_offset = 2 });
+        row += 1;
+    }
+    if (ds.task.worktree) |w| {
+        var buf: [256]u8 = undefined;
+        const line = std.fmt.bufPrint(&buf, "{s} Worktree {s}", .{ state.glyphs.folder, w.path }) catch return;
+        _ = sub.printSegment(.{ .text = line, .style = meta_style }, .{ .row_offset = row, .col_offset = 2 });
+        row += 1;
+    }
+    if (ds.task.pr) |pr| {
+        var buf: [256]u8 = undefined;
+        const line = std.fmt.bufPrint(&buf, "{s} PR       #{d} {s}", .{ state.glyphs.pr, pr.number, @tagName(pr.state) }) catch return;
+        _ = sub.printSegment(.{ .text = line, .style = meta_style }, .{ .row_offset = row, .col_offset = 2 });
+        row += 1;
+    }
+    if (ds.task.issue) |iss| {
+        var buf: [256]u8 = undefined;
+        const line = std.fmt.bufPrint(&buf, "{s} Issue    {s}", .{ state.glyphs.issue, iss.external_id }) catch return;
+        _ = sub.printSegment(.{ .text = line, .style = meta_style }, .{ .row_offset = row, .col_offset = 2 });
+        row += 1;
+    }
+
+    row += 1;
+    _ = sub.printSegment(.{ .text = "Handoffs:", .style = title_style }, .{ .row_offset = row, .col_offset = 2 });
     row += 1;
 
-    // ── Task fields ──
-    printDetailField(sub, &row, "Title   ", ds.task.title, panel_w, panel_h);
-
-    if (ds.task.branch_hint) |b| printDetailField(sub, &row, "Branch  ", b.value, panel_w, panel_h);
-
-    if (ds.task.worktree) |wt| {
-        printDetailField(sub, &row, "Worktree", wt.path, panel_w, panel_h);
-    }
-
-    if (ds.task.pr) |pr| {
-        printDetailField(sub, &row, "PR      ", pr.url.value, panel_w, panel_h);
-    }
-
-    if (ds.task.issue) |iss| {
-        if (iss.url) |u| printDetailField(sub, &row, "Issue   ", u, panel_w, panel_h);
-    }
-
-    if (ds.task.session) |sess| {
-        // "Session  provider:session_id" — truncate to fit
-        var buf: [128]u8 = undefined;
-        const s = std.fmt.bufPrint(&buf, "{s}:{s}", .{ sess.provider, sess.session_id }) catch "...";
-        printDetailField(sub, &row, "Session ", s, panel_w, panel_h);
-    }
-
-    // ── Separator ──
-    if (row + 1 < panel_h -| 1) {
-        _ = sub.printSegment(.{ .text = "---" }, .{ .row_offset = row, .col_offset = 2 });
+    for (ds.handoffs) |h| {
+        if (row >= sub.height -| 1) break;
+        var time_buf: [16]u8 = undefined;
+        const rel = card_layout.formatRelativeTime(&time_buf, h.created_at.unix_secs, now_unix);
+        // Body left-aligned
+        _ = sub.printSegment(.{ .text = h.body, .style = meta_style }, .{ .row_offset = row, .col_offset = 4 });
+        // Right-aligned relative time
+        const rel_col: u16 = if (sub.width > rel.len + 4) sub.width - @as(u16, @intCast(rel.len)) - 2 else 4;
+        _ = sub.printSegment(.{ .text = rel, .style = meta_style }, .{ .row_offset = row, .col_offset = rel_col });
         row += 1;
+        if (row < sub.height -| 1) {
+            _ = sub.printSegment(.{ .text = "╾──╼", .style = meta_style }, .{ .row_offset = row, .col_offset = 4 });
+            row += 1;
+        }
     }
-
-    // ── Handoffs (newest first, up to 10) ──
-    const limit: usize = @min(ds.handoffs.len, 10);
-    for (ds.handoffs[0..limit]) |h| {
-        if (row + 1 >= panel_h -| 1) break;
-        // Print first line of the body only, truncated to fit
-        const body_first_line = blk: {
-            const nl = std.mem.indexOfScalar(u8, h.body, '\n');
-            break :blk if (nl) |n| h.body[0..n] else h.body;
-        };
-        const max_len: usize = if (panel_w > 5) panel_w - 5 else 0;
-        const text = if (body_first_line.len > max_len) body_first_line[0..max_len] else body_first_line;
-        _ = sub.printSegment(.{ .text = text }, .{ .row_offset = row, .col_offset = 2 });
-        row += 1;
-    }
-}
-
-fn printDetailField(win: vaxis.Window, row: *u16, label: []const u8, value: []const u8, win_w: u16, panel_h: u16) void {
-    if (row.* + 1 >= panel_h) return; // guard: don't overflow height
-    _ = win.printSegment(.{ .text = label }, .{ .row_offset = row.*, .col_offset = 2 });
-    _ = win.printSegment(.{ .text = ": " }, .{ .row_offset = row.*, .col_offset = 10 });
-    const max_len: usize = if (win_w > 13) win_w - 13 else 0;
-    const text = if (value.len > max_len) value[0..max_len] else value;
-    _ = win.printSegment(.{ .text = text }, .{ .row_offset = row.*, .col_offset = 12 });
-    row.* += 1;
 }
 
 test "Selection defaults to (0, 0)" {
