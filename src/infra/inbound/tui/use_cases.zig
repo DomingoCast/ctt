@@ -1,6 +1,7 @@
 const std = @import("std");
 const app = @import("application");
 const d = @import("domain");
+const cfg = @import("infra_config");
 
 pub const UseCases = struct {
     add_todo: app.AddTodo,
@@ -20,4 +21,7 @@ pub const UseCases = struct {
     spawn_template: ?[]const u8,
     // Needed for interactive process spawning and absolute-path file writes.
     io: std.Io,
+    refresh_interval_ms: u32 = 2000,
+    use_nerd_glyphs: bool = true,
+    color_scheme_cfg: cfg.ColorScheme = .{},
 };
