@@ -68,6 +68,14 @@ pub const LoadError = error{
     BadFormat,
 };
 
+fn isValidHex(s: []const u8) bool {
+    if (s.len != 7 or s[0] != '#') return false;
+    for (s[1..]) |c| {
+        if (!std.ascii.isHex(c)) return false;
+    }
+    return true;
+}
+
 /// Loads config.json from the given absolute path.
 /// The returned `Parsed(Config)` must be `.deinit()`-ed by the caller.
 /// All `[]const u8` values inside the returned `Config` (including provider
@@ -105,6 +113,17 @@ pub fn load(io: std.Io, a: std.mem.Allocator, path: []const u8) LoadError!std.js
     const ui = &parsed.value.ui;
     if (ui.refresh_interval_ms < 500) ui.refresh_interval_ms = 500;
     if (ui.refresh_interval_ms > 60000) ui.refresh_interval_ms = 60000;
+
+    // Validate color_scheme hex strings per spec §7
+    const cs = &parsed.value.ui.color_scheme;
+    inline for ([_]?[]const u8{ cs.todo, cs.in_progress, cs.in_review, cs.done, cs.title, cs.metadata, cs.idle_pulse }) |maybe| {
+        if (maybe) |hex| {
+            if (!isValidHex(hex)) {
+                parsed.deinit();
+                return error.BadFormat;
+            }
+        }
+    }
 
     return parsed;
 }
@@ -414,4 +433,34 @@ test "load clamps refresh_interval_ms to [500, 60000]" {
     var ok = try load(io, std.testing.allocator, ok_path);
     defer ok.deinit();
     try std.testing.expectEqual(@as(u32, 3000), ok.value.ui.refresh_interval_ms);
+}
+
+test "load rejects invalid color_scheme hex" {
+    var tmp = std.testing.tmpDir(.{});
+    defer tmp.cleanup();
+    const io = std.testing.io;
+
+    // Bad format: missing #
+    try writeTmpFile(io, tmp.dir, "bad1.json",
+        \\{"db_path":"/x","repos":[],"ui":{"color_scheme":{"todo":"abcdef"}}}
+    );
+    const p1 = try tmpRealPath(io, std.testing.allocator, tmp.dir, "bad1.json");
+    defer std.testing.allocator.free(p1);
+    try std.testing.expectError(error.BadFormat, load(io, std.testing.allocator, p1));
+
+    // Bad format: non-hex char
+    try writeTmpFile(io, tmp.dir, "bad2.json",
+        \\{"db_path":"/x","repos":[],"ui":{"color_scheme":{"in_progress":"#zzzzzz"}}}
+    );
+    const p2 = try tmpRealPath(io, std.testing.allocator, tmp.dir, "bad2.json");
+    defer std.testing.allocator.free(p2);
+    try std.testing.expectError(error.BadFormat, load(io, std.testing.allocator, p2));
+
+    // Bad format: wrong length
+    try writeTmpFile(io, tmp.dir, "bad3.json",
+        \\{"db_path":"/x","repos":[],"ui":{"color_scheme":{"done":"#abc"}}}
+    );
+    const p3 = try tmpRealPath(io, std.testing.allocator, tmp.dir, "bad3.json");
+    defer std.testing.allocator.free(p3);
+    try std.testing.expectError(error.BadFormat, load(io, std.testing.allocator, p3));
 }
