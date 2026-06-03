@@ -64,6 +64,7 @@ pub const FakeHandoffRepo = struct {
             if (e.task_id != task_id) continue;
             if (limit) |lim| { if (count >= lim) break; }
             const body_owned = a.dupe(u8, e.body) catch return error.OutOfMemory;
+            errdefer a.free(body_owned);
             out.append(a, .{
                 .id = e.id,
                 .task_id = e.task_id,
