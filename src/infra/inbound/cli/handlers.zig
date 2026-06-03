@@ -320,11 +320,17 @@ fn handleResume(a: std.mem.Allocator, uc: *UseCases, args: args_mod.ResumeArgs, 
 
     // Spawn /bin/sh -c <cmd> synchronously, inheriting stdio so the user's
     // terminal becomes the spawned command's terminal.
+    // If the task has a project_path, set it as the cwd of the spawned process.
+    const spawn_cwd: std.process.Child.Cwd = if (ctx.task.project_path) |p|
+        .{ .path = p }
+    else
+        .inherit;
     var child = try std.process.spawn(uc.io, .{
         .argv = &[_][]const u8{ "/bin/sh", "-c", cmd.command },
         .stdin = .inherit,
         .stdout = .inherit,
         .stderr = .inherit,
+        .cwd = spawn_cwd,
     });
     const term = try child.wait(uc.io);
     switch (term) {
