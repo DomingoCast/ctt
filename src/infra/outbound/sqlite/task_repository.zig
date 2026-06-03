@@ -660,17 +660,18 @@ fn rowToTask(a: std.mem.Allocator, row: zqlite.Row) !d.Task {
     errdefer if (session) |s| { a.free(s.provider); a.free(s.session_id); };
 
     return d.Task{
-        .id          = @enumFromInt(task_id),
-        .title       = title,
-        .branch_hint = branch_hint,
-        .worktree    = worktree,
-        .pr          = pr,
-        .issue       = issue,
-        .archived    = archived_int != 0,
-        .notes       = notes,
-        .session     = session,
-        .created_at  = .{ .unix_secs = parseUnixSecs(created_raw) },
-        .updated_at  = .{ .unix_secs = parseUnixSecs(updated_raw) },
+        .id           = @enumFromInt(task_id),
+        .title        = title,
+        .branch_hint  = branch_hint,
+        .worktree     = worktree,
+        .pr           = pr,
+        .issue        = issue,
+        .archived     = archived_int != 0,
+        .notes        = notes,
+        .session      = session,
+        .project_path = null,
+        .created_at   = .{ .unix_secs = parseUnixSecs(created_raw) },
+        .updated_at   = .{ .unix_secs = parseUnixSecs(updated_raw) },
     };
 }
 

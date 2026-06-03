@@ -204,6 +204,7 @@ test "cardFooterFields TODO shows branch_hint" {
         .archived = false,
         .notes = null,
         .session = null,
+        .project_path = null,
         .created_at = .{ .unix_secs = 0 },
         .updated_at = .{ .unix_secs = 0 },
     };
@@ -225,6 +226,7 @@ test "cardFooterFields TODO no branch shows em-dash" {
         .archived = false,
         .notes = null,
         .session = null,
+        .project_path = null,
         .created_at = .{ .unix_secs = 0 },
         .updated_at = .{ .unix_secs = 0 },
     };
@@ -245,6 +247,7 @@ test "cardFooterFields DONE shows relative time" {
         .archived = false,
         .notes = null,
         .session = null,
+        .project_path = null,
         .created_at = .{ .unix_secs = 0 },
         .updated_at = .{ .unix_secs = 100 },
     };

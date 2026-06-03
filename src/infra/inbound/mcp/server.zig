@@ -742,6 +742,7 @@ const MiniRepo = struct {
             .archived = false,
             .notes = null,
             .session = null,
+            .project_path = null,
             .created_at = .{ .unix_secs = 0 },
             .updated_at = .{ .unix_secs = 0 },
         };
