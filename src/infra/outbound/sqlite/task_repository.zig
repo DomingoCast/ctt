@@ -41,6 +41,7 @@ const Db = @import("db.zig").Db;
 // 33  i.fetched_at
 // 34  t.session_provider
 // 35  t.session_id
+// 36  t.project_path
 
 const TASK_SELECT =
     \\SELECT
@@ -51,7 +52,7 @@ const TASK_SELECT =
     \\    p.id, p.repo_id, p.number, p.url, p.title, p.head_branch, p.state, p.updated_at, p.fetched_at,
     \\    rp.name,
     \\    i.id, i.provider, i.external_id, i.url, i.title, i.state, i.fetched_at,
-    \\    t.session_provider, t.session_id
+    \\    t.session_provider, t.session_id, t.project_path
     \\FROM tasks t
     \\LEFT JOIN worktrees w ON t.worktree_id = w.id
     \\LEFT JOIN repos rw    ON w.repo_id = rw.id
@@ -106,8 +107,8 @@ pub const SqliteTaskRepository = struct {
         const branch_hint_text: ?[]const u8 = if (draft.branch_hint) |b| b.value else null;
 
         conn.exec(
-            "INSERT INTO tasks (title, branch_hint, notes) VALUES (?, ?, ?)",
-            .{ draft.title, branch_hint_text, draft.notes },
+            "INSERT INTO tasks (title, branch_hint, notes, project_path) VALUES (?, ?, ?, ?)",
+            .{ draft.title, branch_hint_text, draft.notes, draft.project_path },
         ) catch |e| return mapErr(e);
 
         const id = conn.lastInsertedRowId();
@@ -271,6 +272,19 @@ pub const SqliteTaskRepository = struct {
             } else {
                 conn.exec(
                     "UPDATE tasks SET session_provider = NULL, session_id = NULL, updated_at = datetime('now') WHERE id = ?",
+                    .{id.raw()},
+                ) catch |e| return mapErr(e);
+            }
+        }
+        if (patch.project_path) |maybe_pp| {
+            if (maybe_pp) |pp| {
+                conn.exec(
+                    "UPDATE tasks SET project_path = ?, updated_at = datetime('now') WHERE id = ?",
+                    .{ pp, id.raw() },
+                ) catch |e| return mapErr(e);
+            } else {
+                conn.exec(
+                    "UPDATE tasks SET project_path = NULL, updated_at = datetime('now') WHERE id = ?",
                     .{id.raw()},
                 ) catch |e| return mapErr(e);
             }
@@ -659,6 +673,11 @@ fn rowToTask(a: std.mem.Allocator, row: zqlite.Row) !d.Task {
     } else null;
     errdefer if (session) |s| { a.free(s.provider); a.free(s.session_id); };
 
+    // ── project_path column (36) ──
+    const pp_raw = row.nullableText(36);
+    const project_path: ?[]const u8 = if (pp_raw) |pp| try a.dupe(u8, pp) else null;
+    errdefer if (project_path) |pp| a.free(pp);
+
     return d.Task{
         .id           = @enumFromInt(task_id),
         .title        = title,
@@ -669,7 +688,7 @@ fn rowToTask(a: std.mem.Allocator, row: zqlite.Row) !d.Task {
         .archived     = archived_int != 0,
         .notes        = notes,
         .session      = session,
-        .project_path = null,
+        .project_path = project_path,
         .created_at   = .{ .unix_secs = parseUnixSecs(created_raw) },
         .updated_at   = .{ .unix_secs = parseUnixSecs(updated_raw) },
     };
@@ -704,4 +723,55 @@ pub fn freeTask(a: std.mem.Allocator, t: d.Task) void {
         a.free(s.provider);
         a.free(s.session_id);
     }
+    if (t.project_path) |pp| a.free(pp);
+}
+
+test "task project_path round-trip" {
+    var tmp = std.testing.tmpDir(.{});
+    defer tmp.cleanup();
+    const path_z = try @import("db.zig").tmpDbPath(std.testing.allocator, tmp, "proj.sqlite");
+    defer std.testing.allocator.free(path_z);
+
+    var db = try @import("db.zig").Db.open(path_z);
+    defer db.close();
+
+    var repo = SqliteTaskRepository.init(&db);
+    const iface = repo.interface();
+
+    const created = try iface.create(std.testing.allocator, .{
+        .title = "t",
+        .project_path = "/tmp/some-project",
+    });
+    const id = created.id;
+    freeTask(std.testing.allocator, created);
+
+    const got = (try iface.get(std.testing.allocator, id)).?;
+    defer freeTask(std.testing.allocator, got);
+
+    try std.testing.expect(got.project_path != null);
+    try std.testing.expectEqualStrings("/tmp/some-project", got.project_path.?);
+}
+
+test "task project_path patch clear" {
+    var tmp = std.testing.tmpDir(.{});
+    defer tmp.cleanup();
+    const path_z = try @import("db.zig").tmpDbPath(std.testing.allocator, tmp, "proj2.sqlite");
+    defer std.testing.allocator.free(path_z);
+
+    var db = try @import("db.zig").Db.open(path_z);
+    defer db.close();
+
+    var repo = SqliteTaskRepository.init(&db);
+    const iface = repo.interface();
+
+    const t = try iface.create(std.testing.allocator, .{ .title = "t", .project_path = "/tmp/p" });
+    const id = t.id;
+    freeTask(std.testing.allocator, t);
+
+    const patched = try iface.update(std.testing.allocator, id, .{ .project_path = @as(?[]const u8, null) });
+    freeTask(std.testing.allocator, patched);
+
+    const got = (try iface.get(std.testing.allocator, id)).?;
+    defer freeTask(std.testing.allocator, got);
+    try std.testing.expect(got.project_path == null);
 }
