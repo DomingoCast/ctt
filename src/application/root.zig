@@ -13,6 +13,8 @@ pub const RefreshReport = @import("use_cases/refresh_all.zig").RefreshReport;
 pub const SetSessionHandle = @import("use_cases/set_session_handle.zig").SetSessionHandle;
 pub const AddHandoff  = @import("use_cases/add_handoff.zig").AddHandoff;
 pub const ListHandoffs = @import("use_cases/list_handoffs.zig").ListHandoffs;
+pub const GetContext  = @import("use_cases/get_context.zig").GetContext;
+pub const TaskContext = @import("use_cases/get_context.zig").TaskContext;
 
 test {
     _ = @import("use_cases/add_todo.zig");
@@ -27,4 +29,5 @@ test {
     _ = @import("use_cases/set_session_handle.zig");
     _ = @import("use_cases/add_handoff.zig");
     _ = @import("use_cases/list_handoffs.zig");
+    _ = @import("use_cases/get_context.zig");
 }
