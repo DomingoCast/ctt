@@ -272,7 +272,10 @@ fn handleContext(a: std.mem.Allocator, uc: *UseCases, args: args_mod.ContextArgs
 }
 
 fn handleResume(a: std.mem.Allocator, uc: *UseCases, args: args_mod.ResumeArgs, writer: anytype) !void {
-    // Implemented in Task E3 (depends on config + template-lookup wiring).
+    // Interim stub — real implementation lands in Phase E3 (template renderer + spawn).
+    // We print + exit 0 (rather than error.NotImplemented) so a `ctt resume <id>` from a
+    // user trying it out gets a clear message rather than a process-exit-1 error. This
+    // is acceptable for the sprint window; if E3 doesn't land, swap to error.NotImplemented.
     _ = a;
     _ = uc;
     _ = args;
