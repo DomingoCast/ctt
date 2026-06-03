@@ -3,14 +3,28 @@ const d = @import("domain");
 const glyphs_mod = @import("glyphs.zig");
 
 /// If `text` (UTF-8 byte count) exceeds `max`, truncate to a length that leaves room for a
-/// trailing `…` (caller appends it). Returns `text` if it fits or `max < 3`.
-/// Returns a slice at most `max - 3` bytes when truncating.
+/// trailing `…` (caller appends it). Returns `text` if it fits.
+/// Returns a slice at most `max - 3` bytes when truncating, always on a UTF-8 boundary.
+/// If the first codepoint alone would fill `max - 3`, returns it whole (slightly oversize)
+/// rather than returning an empty slice.
 pub fn truncateWithEllipsis(text: []const u8, max: usize) []const u8 {
     if (text.len <= max) return text;
-    if (max < 3) return text[0..max];
+    if (max < 3) {
+        // Too narrow for ellipsis; back off to UTF-8 boundary within max
+        var j: usize = max;
+        while (j > 0 and (text[j] & 0xC0) == 0x80) : (j -= 1) {}
+        return text[0..j];
+    }
     var i: usize = max - 3;
     // back off to a UTF-8 boundary (don't slice mid-codepoint)
     while (i > 0 and (text[i] & 0xC0) == 0x80) : (i -= 1) {}
+    if (i == 0 and text.len > 0) {
+        // First codepoint would be dropped — return it whole as best-effort.
+        // Advance i past the first codepoint by reading the leading byte.
+        const lead = text[0];
+        const cp_len: usize = if (lead < 0x80) 1 else if (lead < 0xE0) 2 else if (lead < 0xF0) 3 else 4;
+        i = @min(cp_len, text.len);
+    }
     return text[0..i];
 }
 
@@ -47,6 +61,26 @@ test "truncateWithEllipsis longer truncates leaving ellipsis room" {
     const out = truncateWithEllipsis("abcdefghij", 6);
     try std.testing.expectEqual(@as(usize, 3), out.len);
     try std.testing.expectEqualStrings("abc", out);
+}
+
+test "truncateWithEllipsis preserves first multi-byte codepoint when max is small" {
+    // "あ" is 3 bytes (U+3042)
+    const out = truncateWithEllipsis("あabc", 5);
+    // Expected: returns the "あ" — better than empty slice + ellipsis
+    try std.testing.expect(out.len >= 3);
+    try std.testing.expect(std.mem.startsWith(u8, out, "あ"));
+}
+
+test "truncateWithEllipsis max=0 returns empty" {
+    const out = truncateWithEllipsis("hello", 0);
+    try std.testing.expectEqual(@as(usize, 0), out.len);
+}
+
+test "truncateWithEllipsis max<3 backs off to UTF-8 boundary" {
+    // 2-byte char "é" (U+00E9). With max=1, the first byte alone is invalid UTF-8.
+    // Expect: empty slice (back-off to 0).
+    const out = truncateWithEllipsis("é", 1);
+    try std.testing.expectEqual(@as(usize, 0), out.len);
 }
 
 test "formatRelativeTime just now" {
