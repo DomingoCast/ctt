@@ -650,6 +650,7 @@ fn rowToTask(a: std.mem.Allocator, row: zqlite.Row) !d.Task {
     // ── session columns (34-35) ──
     const sp_raw = row.nullableText(34);
     const si_raw = row.nullableText(35);
+    std.debug.assert((sp_raw == null) == (si_raw == null)); // both or neither
     const session: ?d.SessionHandle = if (sp_raw != null and si_raw != null) blk: {
         const prov = try a.dupe(u8, sp_raw.?);
         errdefer a.free(prov);
