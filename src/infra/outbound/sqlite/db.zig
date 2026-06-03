@@ -8,6 +8,7 @@ pub const Db = struct {
     pub fn open(path: [*:0]const u8) !Db {
         var conn = try zqlite.open(path, zqlite.OpenFlags.Create | zqlite.OpenFlags.EXResCode);
         errdefer conn.close();
+        try conn.execNoArgs("PRAGMA foreign_keys = ON");
         var db = Db{ .conn = conn };
         try db.migrate();
         return db;
@@ -90,6 +91,37 @@ test "v2 migration adds session columns and handoffs table" {
         if (std.mem.eql(u8, name, "session_provider")) found_sp = true;
     }
     try std.testing.expect(found_sp);
+}
+
+test "foreign keys are enforced (CASCADE works)" {
+    var tmp = std.testing.tmpDir(.{});
+    defer tmp.cleanup();
+    const path_z = try tmpDbPath(std.testing.allocator, tmp, "fk.sqlite");
+    defer std.testing.allocator.free(path_z);
+
+    var db = try Db.open(path_z);
+    defer db.close();
+
+    try db.conn.exec("INSERT INTO tasks (title) VALUES (?)", .{"t"});
+    const task_id = db.conn.lastInsertedRowId();
+    try db.conn.exec(
+        "INSERT INTO handoffs (task_id, body, created_at) VALUES (?, ?, ?)",
+        .{ task_id, "x", @as(i64, 100) },
+    );
+
+    // Sanity: handoff exists
+    {
+        var rows = try db.conn.rows("SELECT id FROM handoffs WHERE task_id = ?", .{task_id});
+        defer rows.deinit();
+        try std.testing.expect(rows.next() != null);
+    }
+
+    // Delete the task; handoff must cascade
+    try db.conn.exec("DELETE FROM tasks WHERE id = ?", .{task_id});
+
+    var rows = try db.conn.rows("SELECT id FROM handoffs WHERE task_id = ?", .{task_id});
+    defer rows.deinit();
+    try std.testing.expect(rows.next() == null);
 }
 
 test "re-opening an existing db is idempotent (no double migration)" {
