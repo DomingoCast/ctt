@@ -18,6 +18,10 @@ pub const Command = union(enum) {
     open: OpenArgs,
     config: ConfigCmd,
     mcp,
+    session: SessionArgs,
+    handoff: HandoffArgs,
+    context: ContextArgs,
+    @"resume": ResumeArgs,
 };
 
 pub const ListArgs = struct {
@@ -73,6 +77,31 @@ pub const ConfigCmd = union(enum) {
     linear_set_token: struct { token: []const u8 },
 };
 
+pub const SessionArgs = union(enum) {
+    set: struct { id: i64, provider: []const u8, session_id: []const u8 },
+    clear: struct { id: i64 },
+};
+
+pub const HandoffArgs = struct {
+    id: i64,
+    note: ?[]const u8 = null,    // if null and !list and !latest, read body from stdin
+    list: bool = false,
+    latest: bool = false,
+    json: bool = false,
+};
+
+pub const ContextArgs = struct {
+    id: i64,
+    json: bool = false,
+    handoff_limit: ?u32 = null,
+};
+
+pub const ResumeArgs = struct {
+    id: i64,
+    print: bool = false,
+    fresh: bool = false,
+};
+
 pub const ParseError = error{ MissingArg, BadInt, UnknownCommand, ParseFailed, OutOfMemory };
 
 // ---------------------------------------------------------------------------
@@ -116,6 +145,10 @@ pub fn parseFromArgs(a: std.mem.Allocator, args: []const [:0]u8) ParseError!Comm
     if (std.mem.eql(u8, sub, "open")) return try parseOpen(a, args[1..]);
     if (std.mem.eql(u8, sub, "config")) return try parseConfig(a, args[1..]);
     if (std.mem.eql(u8, sub, "mcp")) return .mcp;
+    if (std.mem.eql(u8, sub, "session")) return try parseSession(a, args[1..]);
+    if (std.mem.eql(u8, sub, "handoff")) return try parseHandoff(a, args[1..]);
+    if (std.mem.eql(u8, sub, "context")) return try parseContext(a, args[1..]);
+    if (std.mem.eql(u8, sub, "resume"))  return try parseResume(a, args[1..]);
 
     return error.UnknownCommand;
 }
@@ -159,6 +192,13 @@ pub fn freeCommand(a: std.mem.Allocator, cmd: Command) void {
                 .linear_set_token => |c| a.free(c.token),
             }
         },
+        .session => |v| switch (v) {
+            .set => |c| { a.free(c.provider); a.free(c.session_id); },
+            .clear => {},
+        },
+        .handoff => |v| if (v.note) |n| a.free(n),
+        .context => {},
+        .@"resume" => {},
     }
 }
 
@@ -383,6 +423,93 @@ fn parseConfig(a: std.mem.Allocator, argv: []const [:0]u8) ParseError!Command {
     }
 
     return error.UnknownCommand;
+}
+
+fn parseSession(a: std.mem.Allocator, argv: []const [:0]u8) ParseError!Command {
+    if (argv.len < 1) return error.MissingArg;
+    const action = argv[0];
+    if (std.mem.eql(u8, action, "set")) {
+        if (argv.len < 4) return error.MissingArg;
+        const id = std.fmt.parseInt(i64, argv[1], 10) catch return error.BadInt;
+        const provider = try a.dupe(u8, argv[2]);
+        errdefer a.free(provider);
+        const sid = try a.dupe(u8, argv[3]);
+        return .{ .session = .{ .set = .{ .id = id, .provider = provider, .session_id = sid } } };
+    } else if (std.mem.eql(u8, action, "clear")) {
+        if (argv.len < 2) return error.MissingArg;
+        const id = std.fmt.parseInt(i64, argv[1], 10) catch return error.BadInt;
+        return .{ .session = .{ .clear = .{ .id = id } } };
+    }
+    return error.UnknownCommand;
+}
+
+fn parseHandoff(a: std.mem.Allocator, argv: []const [:0]u8) ParseError!Command {
+    if (argv.len < 1) return error.MissingArg;
+    var result = HandoffArgs{ .id = 0 };
+    var got_id = false;
+    errdefer if (result.note) |n| a.free(n);
+    var i: usize = 0;
+    while (i < argv.len) : (i += 1) {
+        const arg = argv[i];
+        if (std.mem.eql(u8, arg, "--note")) {
+            i += 1;
+            if (i >= argv.len) return error.MissingArg;
+            result.note = try a.dupe(u8, argv[i]);
+        } else if (std.mem.eql(u8, arg, "--list")) {
+            result.list = true;
+        } else if (std.mem.eql(u8, arg, "--latest")) {
+            result.latest = true;
+        } else if (std.mem.eql(u8, arg, "--json")) {
+            result.json = true;
+        } else if (!got_id) {
+            result.id = std.fmt.parseInt(i64, arg, 10) catch return error.BadInt;
+            got_id = true;
+        }
+    }
+    if (!got_id) return error.MissingArg;
+    return .{ .handoff = result };
+}
+
+fn parseContext(a: std.mem.Allocator, argv: []const [:0]u8) ParseError!Command {
+    _ = a;
+    var result = ContextArgs{ .id = 0 };
+    var got_id = false;
+    var i: usize = 0;
+    while (i < argv.len) : (i += 1) {
+        const arg = argv[i];
+        if (std.mem.eql(u8, arg, "--json")) {
+            result.json = true;
+        } else if (std.mem.eql(u8, arg, "--handoffs")) {
+            i += 1;
+            if (i >= argv.len) return error.MissingArg;
+            result.handoff_limit = std.fmt.parseInt(u32, argv[i], 10) catch return error.BadInt;
+        } else if (!got_id) {
+            result.id = std.fmt.parseInt(i64, arg, 10) catch return error.BadInt;
+            got_id = true;
+        }
+    }
+    if (!got_id) return error.MissingArg;
+    return .{ .context = result };
+}
+
+fn parseResume(a: std.mem.Allocator, argv: []const [:0]u8) ParseError!Command {
+    _ = a;
+    var result = ResumeArgs{ .id = 0 };
+    var got_id = false;
+    var i: usize = 0;
+    while (i < argv.len) : (i += 1) {
+        const arg = argv[i];
+        if (std.mem.eql(u8, arg, "--print")) {
+            result.print = true;
+        } else if (std.mem.eql(u8, arg, "--fresh")) {
+            result.fresh = true;
+        } else if (!got_id) {
+            result.id = std.fmt.parseInt(i64, arg, 10) catch return error.BadInt;
+            got_id = true;
+        }
+    }
+    if (!got_id) return error.MissingArg;
+    return .{ .@"resume" = result };
 }
 
 // ---------------------------------------------------------------------------
@@ -660,4 +787,59 @@ test "parseList with --status then missing value leaks nothing" {
     };
     const result = parseFromArgs(std.testing.allocator, &args);
     try std.testing.expectError(error.MissingArg, result);
+}
+
+test "parse 'session set 5 claude abc'" {
+    const args = [_][:0]u8{
+        @constCast(@as([:0]const u8, "session")),
+        @constCast(@as([:0]const u8, "set")),
+        @constCast(@as([:0]const u8, "5")),
+        @constCast(@as([:0]const u8, "claude")),
+        @constCast(@as([:0]const u8, "abc-123")),
+    };
+    const cmd = try parseFromArgs(std.testing.allocator, &args);
+    defer freeCommand(std.testing.allocator, cmd);
+    try std.testing.expectEqual(@as(i64, 5), cmd.session.set.id);
+    try std.testing.expectEqualStrings("claude", cmd.session.set.provider);
+    try std.testing.expectEqualStrings("abc-123", cmd.session.set.session_id);
+}
+
+test "parse 'handoff 7 --note hello'" {
+    const args = [_][:0]u8{
+        @constCast(@as([:0]const u8, "handoff")),
+        @constCast(@as([:0]const u8, "7")),
+        @constCast(@as([:0]const u8, "--note")),
+        @constCast(@as([:0]const u8, "hello")),
+    };
+    const cmd = try parseFromArgs(std.testing.allocator, &args);
+    defer freeCommand(std.testing.allocator, cmd);
+    try std.testing.expectEqual(@as(i64, 7), cmd.handoff.id);
+    try std.testing.expectEqualStrings("hello", cmd.handoff.note.?);
+}
+
+test "parse 'resume 3 --fresh'" {
+    const args = [_][:0]u8{
+        @constCast(@as([:0]const u8, "resume")),
+        @constCast(@as([:0]const u8, "3")),
+        @constCast(@as([:0]const u8, "--fresh")),
+    };
+    const cmd = try parseFromArgs(std.testing.allocator, &args);
+    defer freeCommand(std.testing.allocator, cmd);
+    try std.testing.expectEqual(@as(i64, 3), cmd.@"resume".id);
+    try std.testing.expect(cmd.@"resume".fresh);
+}
+
+test "parse 'context 9 --json --handoffs 5'" {
+    const args = [_][:0]u8{
+        @constCast(@as([:0]const u8, "context")),
+        @constCast(@as([:0]const u8, "9")),
+        @constCast(@as([:0]const u8, "--json")),
+        @constCast(@as([:0]const u8, "--handoffs")),
+        @constCast(@as([:0]const u8, "5")),
+    };
+    const cmd = try parseFromArgs(std.testing.allocator, &args);
+    defer freeCommand(std.testing.allocator, cmd);
+    try std.testing.expectEqual(@as(i64, 9), cmd.context.id);
+    try std.testing.expect(cmd.context.json);
+    try std.testing.expectEqual(@as(?u32, 5), cmd.context.handoff_limit);
 }
