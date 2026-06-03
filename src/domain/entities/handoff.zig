@@ -5,12 +5,14 @@ const Timestamp = @import("../value_objects/timestamp.zig").Timestamp;
 pub const HandoffEntry = struct {
     id: ids.HandoffId,
     task_id: ids.TaskId,
+    /// Allocated by the allocator passed to `list`/`latest`; caller owns lifetime.
     body: []const u8,
     created_at: Timestamp,
 };
 
 pub const NewHandoff = struct {
     task_id: ids.TaskId,
+    /// Caller-owned at the call site; the repository must copy before returning.
     body: []const u8,
 };
 
