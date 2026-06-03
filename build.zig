@@ -99,6 +99,7 @@ pub fn build(b: *std.Build) void {
     infra_tui.addImport("domain", domain);
     infra_tui.addImport("application", application);
     infra_tui.addImport("vaxis", vaxis_mod);
+    infra_tui.addImport("infra_config", infra_config);
 
     // --- Executable ---
     const exe = b.addExecutable(.{

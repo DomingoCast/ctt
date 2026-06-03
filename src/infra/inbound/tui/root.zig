@@ -12,5 +12,6 @@ test {
     _ = state;
     _ = modal;
     _ = @import("use_cases.zig");
+    _ = @import("theme.zig");
     // app.zig requires a real TTY, so don't include it in the test block
 }
