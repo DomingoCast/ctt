@@ -241,7 +241,7 @@ fn handleHandoff(a: std.mem.Allocator, uc: *UseCases, args: args_mod.HandoffArgs
 
     // Write path: --note or stdin
     // Trim trailing \r\n unconditionally: shell argv splitting means --note args never
-    // carry a trailing newline, so trimRight is a no-op there. For stdin (pipe/heredoc)
+    // carry a trailing newline, so trimEnd is a no-op there. For stdin (pipe/heredoc)
     // the trim removes the extra newline that would otherwise produce a double blank line
     // when the body is printed by `ctt handoff <id> --latest`.
     const body_raw = if (args.note) |n| try a.dupe(u8, n) else try readStdinAll(a);
@@ -325,7 +325,11 @@ fn handleResume(a: std.mem.Allocator, uc: *UseCases, args: args_mod.ResumeArgs, 
         .stdout = .inherit,
         .stderr = .inherit,
     });
-    _ = try child.wait(uc.io);
+    const term = try child.wait(uc.io);
+    switch (term) {
+        .exited => |code| if (code != 0) std.process.exit(code),
+        .signal, .stopped, .unknown => std.process.exit(1),
+    }
 }
 
 fn writeContextFile(io: std.Io, path: []const u8, body: []const u8) !void {
