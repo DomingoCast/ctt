@@ -6,6 +6,8 @@ const modal_mod = @import("modal.zig");
 const UseCases = @import("use_cases.zig").UseCases;
 const d = @import("domain");
 const app = @import("application");
+const card_layout = @import("card_layout.zig");
+const tick = @import("tick.zig");
 
 const Event = union(enum) {
     key_press: vaxis.Key,
@@ -40,6 +42,10 @@ pub fn run(
     try loop.start();
     defer loop.stop();
 
+    var stop_flag = std.atomic.Value(bool){ .raw = false };
+    var ticker = try tick.TickThread(@TypeOf(loop), Event).start(&loop, &stop_flag, uc.refresh_interval_ms);
+    defer ticker.join();
+
     try vx.enterAltScreen(tty.writer());
     try vx.queryTerminal(tty.writer(), .fromSeconds(1));
 
@@ -60,7 +66,12 @@ pub fn run(
                 try handleKey(a, uc, &state, k);
             },
             .winsize => |ws| try vx.resize(a, tty.writer(), ws),
-            .tick => {}, // wired in D3
+            .tick => {
+                state.spinner_frame +%= 1; // advance regardless of mode (footer animation)
+                if (state.mode == .normal) {
+                    try doRefresh(a, uc, &state, false); // non-forced; mtime guard applies
+                }
+            },
             .focus_in => try doRefresh(a, uc, &state, true),
             .focus_out => {}, // intentionally no-op
         }
@@ -241,7 +252,20 @@ fn submitModal(a: std.mem.Allocator, uc: *UseCases, state: *state_mod.State) !vo
 }
 
 fn doRefresh(a: std.mem.Allocator, uc: *UseCases, state: *state_mod.State, force: bool) !void {
-    _ = force; // used in D3 once mtime guard is added
+    // mtime guard — skip work if DB unchanged and not forced
+    if (uc.db_path.len > 0) {
+        const stat_ok_mtime = blk: {
+            const file = std.Io.Dir.openFileAbsolute(uc.io, uc.db_path, .{}) catch break :blk null;
+            defer file.close(uc.io);
+            const s = file.stat(uc.io) catch break :blk null;
+            break :blk s.mtime.nanoseconds;
+        };
+        if (stat_ok_mtime) |current_mtime| {
+            const cm: i128 = @intCast(current_mtime);
+            if (!card_layout.shouldRefresh(state.last_db_mtime, cm, force)) return;
+            state.last_db_mtime = cm;
+        }
+    }
 
     state.refreshing = true;
     var report = uc.refresh.execute(a, uc.repos) catch |err| {

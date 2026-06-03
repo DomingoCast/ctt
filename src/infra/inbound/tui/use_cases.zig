@@ -24,4 +24,5 @@ pub const UseCases = struct {
     refresh_interval_ms: u32 = 2000,
     use_nerd_glyphs: bool = true,
     color_scheme_cfg: cfg.ColorScheme = .{},
+    db_path: []const u8 = "",
 };
