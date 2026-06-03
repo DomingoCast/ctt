@@ -26,7 +26,12 @@ pub const Inputs = struct {
     /// Lookup function: caller knows where the templates map lives.
     templates: *const fn (provider: []const u8) ?ProviderTemplate,
     default_provider: ?[]const u8,
+    /// Trust model: session.session_id is interpolated verbatim into a shell
+    /// command. Callers (config authors and AI providers emitting session IDs)
+    /// are responsible for ensuring the string is shell-safe; ctt does no escaping.
     session: ?d.SessionHandle,
+    /// Same trust model as `session.session_id` — interpolated verbatim into a
+    /// shell command. Use a path you control; ctt does no escaping.
     /// Path to a temp file containing the latest handoff body (or an empty file).
     /// Required only when the fresh template uses `{{context_file}}`.
     context_file: ?[]const u8,
