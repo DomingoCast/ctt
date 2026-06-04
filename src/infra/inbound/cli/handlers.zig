@@ -16,6 +16,7 @@ pub fn dispatch(
 ) !void {
     switch (cmd) {
         .none, .mcp => return, // handled by main.zig
+        .help => try handleHelp(writer),
         .list => |args| try handleList(a, uc, args, writer),
         .show => |args| try handleShow(a, uc, args, writer),
         .add => |args| try handleAdd(a, uc, args, writer),
@@ -37,6 +38,52 @@ pub fn dispatch(
 // ---------------------------------------------------------------------------
 // Handlers
 // ---------------------------------------------------------------------------
+
+const USAGE =
+    \\ctt — terminal task tracker for AI-assisted dev work
+    \\
+    \\Usage:  ctt [<subcommand>] [<args>]
+    \\        ctt                              launch TUI (no subcommand)
+    \\        ctt help | --help | -h           print this message
+    \\
+    \\Task ops:
+    \\  add <title> [--branch <name>] [--issue <KEY>] [--project <path>]
+    \\  list [--json] [--status todo|in-progress|in-review|done|archived] [--repo <name>]
+    \\  show <id> [--json]
+    \\  update <id> [--title ...] [--branch-hint ...] [--notes ...]
+    \\  link <id> [--worktree <path>] [--pr <url>] [--issue <KEY>]
+    \\  unlink <id> worktree|pr|issue
+    \\  archive <id>
+    \\  delete <id>
+    \\  open <id> [--pr | --issue]
+    \\  refresh
+    \\
+    \\Handoff & resume:
+    \\  session set <id> <provider> <session-id>
+    \\  session clear <id>
+    \\  handoff <id> --note "<text>"            short note from flag
+    \\  handoff <id>                            multi-line body from stdin
+    \\  handoff <id> --list [--json]            show past entries (newest first)
+    \\  handoff <id> --latest                   print most recent body
+    \\  context <id> [--json] [--handoffs N]    bundled task + session + handoffs
+    \\  resume <id> [--print] [--fresh]         render command (and spawn unless --print)
+    \\
+    \\Config:
+    \\  config repo add <path>                  add repo to ~/.config/ctt/config.json
+    \\  config repo list
+    \\  config repo remove <name>
+    \\  config linear set-token <token>
+    \\
+    \\MCP server:
+    \\  mcp                                     JSON-RPC over stdio (for `claude mcp add`)
+    \\
+    \\See https://github.com/DomingoCast/ctt for full docs.
+    \\
+;
+
+fn handleHelp(writer: anytype) !void {
+    try writer.writeAll(USAGE);
+}
 
 fn handleAdd(a: std.mem.Allocator, uc: *UseCases, args: args_mod.AddArgs, writer: anytype) !void {
     const branch_name = if (args.branch) |b| d.BranchName.init(b) else null;

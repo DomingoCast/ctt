@@ -6,6 +6,7 @@ const std = @import("std");
 
 pub const Command = union(enum) {
     none, // launch TUI
+    help, // print top-level usage
     list: ListArgs,
     show: ShowArgs,
     add: AddArgs,
@@ -134,6 +135,7 @@ pub fn parseFromArgs(a: std.mem.Allocator, args: []const [:0]u8) ParseError!Comm
     if (args.len == 0) return .none;
     const sub = args[0];
 
+    if (std.mem.eql(u8, sub, "help") or std.mem.eql(u8, sub, "--help") or std.mem.eql(u8, sub, "-h")) return .help;
     if (std.mem.eql(u8, sub, "list")) return try parseList(a, args[1..]);
     if (std.mem.eql(u8, sub, "show")) return try parseShow(a, args[1..]);
     if (std.mem.eql(u8, sub, "add")) return try parseAdd(a, args[1..]);
@@ -160,7 +162,7 @@ pub fn parseFromArgs(a: std.mem.Allocator, args: []const [:0]u8) ParseError!Comm
 
 pub fn freeCommand(a: std.mem.Allocator, cmd: Command) void {
     switch (cmd) {
-        .none, .refresh, .mcp => {},
+        .none, .help, .refresh, .mcp => {},
         .list => |v| {
             if (v.status) |s| a.free(s);
             if (v.repo) |r| a.free(r);
@@ -822,6 +824,15 @@ test "parse 'handoff 7 --note hello'" {
     defer freeCommand(std.testing.allocator, cmd);
     try std.testing.expectEqual(@as(i64, 7), cmd.handoff.id);
     try std.testing.expectEqualStrings("hello", cmd.handoff.note.?);
+}
+
+test "parse 'help', '--help', '-h' all return .help" {
+    inline for (.{ "help", "--help", "-h" }) |spelling| {
+        const args = [_][:0]u8{@constCast(@as([:0]const u8, spelling))};
+        const cmd = try parseFromArgs(std.testing.allocator, &args);
+        defer freeCommand(std.testing.allocator, cmd);
+        try std.testing.expectEqual(@as(@typeInfo(Command).@"union".tag_type.?, .help), cmd);
+    }
 }
 
 test "parse 'resume 3 --fresh'" {
