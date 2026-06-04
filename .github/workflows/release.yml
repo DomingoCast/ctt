@@ -1,0 +1,81 @@
+name: release
+
+on:
+  push:
+    tags:
+      - 'v*'
+
+permissions:
+  contents: write   # required to create the draft release
+
+jobs:
+  # ──────────────────────────────────────────────────────────────────────────
+  # Gate: run the full test suite once before any release artifacts are built.
+  # ──────────────────────────────────────────────────────────────────────────
+  test:
+    name: test
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: mlugg/setup-zig@v2
+        with:
+          # Local dev tracks Zig master via Homebrew (reports as 0.16.0_1).
+          # Pin once 0.16.0 stabilizes upstream.
+          version: master
+      - name: zig build test
+        run: zig build test
+
+  # ──────────────────────────────────────────────────────────────────────────
+  # Cross-compile binaries for each supported target.
+  # ──────────────────────────────────────────────────────────────────────────
+  build:
+    name: build ${{ matrix.target }}
+    needs: test
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        target:
+          - aarch64-macos       # Apple Silicon Mac
+          - x86_64-linux-gnu    # 64-bit Linux (glibc)
+    steps:
+      - uses: actions/checkout@v4
+      - uses: mlugg/setup-zig@v2
+        with:
+          version: master
+      - name: zig build -Dtarget=${{ matrix.target }} -Doptimize=ReleaseSafe
+        run: zig build -Dtarget=${{ matrix.target }} -Doptimize=ReleaseSafe
+      - name: Stage artifact
+        run: |
+          mkdir -p artifacts
+          cp zig-out/bin/ctt artifacts/ctt-${{ matrix.target }}
+      - uses: actions/upload-artifact@v4
+        with:
+          name: ctt-${{ matrix.target }}
+          path: artifacts/ctt-${{ matrix.target }}
+          if-no-files-found: error
+
+  # ──────────────────────────────────────────────────────────────────────────
+  # Collect artifacts and create a draft GitHub Release attached to the tag.
+  # ──────────────────────────────────────────────────────────────────────────
+  release:
+    name: draft release
+    needs: build
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          path: artifacts
+          merge-multiple: true
+      - name: Compute SHA-256 checksums
+        run: |
+          cd artifacts
+          sha256sum ctt-* > SHA256SUMS
+          cat SHA256SUMS
+      - uses: softprops/action-gh-release@v2
+        with:
+          draft: true
+          generate_release_notes: true
+          files: |
+            artifacts/ctt-*
+            artifacts/SHA256SUMS
