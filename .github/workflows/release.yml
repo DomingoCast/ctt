@@ -19,12 +19,11 @@ jobs:
       - uses: actions/checkout@v4
       - uses: mlugg/setup-zig@v2
         with:
-          # Local dev tracks Homebrew's Zig 0.16.0_1, which corresponds to a
-          # mid-2026 master snapshot. Upstream master moves faster than vaxis
-          # 0.6.0 supports (it still uses `std.meta.fields`, removed in
-          # 0.17.0-dev). Mach's nominated Zig tracks a stable snapshot tested
-          # by a real downstream — use that for CI parity.
-          version: mach-latest
+          # Pinned to match local Homebrew Zig 0.16.0. vaxis 0.6.0 still uses
+          # `std.meta.fields` (removed in 0.17-dev) and uucode 0.2.0 needs the
+          # newer 3-arg `b.modules.put` (added before 0.16.0 stable). 0.16.0
+          # is the narrow window where both work.
+          version: 0.16.0
       - name: zig build test
         run: zig build test
 
@@ -45,7 +44,7 @@ jobs:
       - uses: actions/checkout@v4
       - uses: mlugg/setup-zig@v2
         with:
-          version: mach-latest
+          version: 0.16.0
       - name: zig build -Dtarget=${{ matrix.target }} -Doptimize=ReleaseSafe
         run: zig build -Dtarget=${{ matrix.target }} -Doptimize=ReleaseSafe
       - name: Stage artifact
