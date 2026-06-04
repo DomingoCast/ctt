@@ -253,4 +253,4 @@ zig build            # debug build
 
 ## License
 
-TBD — pick one for v1.1.
+MIT — see [LICENSE](./LICENSE).
