@@ -68,6 +68,7 @@ pub fn build(b: *std.Build) void {
         .root_source_file = b.path("src/infra/outbound/config/root.zig"),
         .target = target,
         .optimize = optimize,
+        .link_libc = true,  // std.c.getenv for CTT_LINEAR_TOKEN
     });
     infra_config.addImport("domain", domain);
 
@@ -76,6 +77,7 @@ pub fn build(b: *std.Build) void {
         .root_source_file = b.path("src/infra/inbound/cli/root.zig"),
         .target = target,
         .optimize = optimize,
+        .link_libc = true,  // std.c.clock_gettime in handleResume
     });
     infra_cli.addImport("domain", domain);
     infra_cli.addImport("application", application);
@@ -95,6 +97,7 @@ pub fn build(b: *std.Build) void {
         .root_source_file = b.path("src/infra/inbound/tui/root.zig"),
         .target = target,
         .optimize = optimize,
+        .link_libc = true,  // std.c.nanosleep + clock_gettime in tick.zig / app.zig
     });
     infra_tui.addImport("domain", domain);
     infra_tui.addImport("application", application);
