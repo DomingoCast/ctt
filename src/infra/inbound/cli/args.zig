@@ -77,6 +77,9 @@ pub const ConfigCmd = union(enum) {
     repo_list,
     repo_remove: struct { name: []const u8 },
     linear_set_token: struct { token: []const u8 },
+    project_root_add: struct { path: []const u8 },
+    project_root_list,
+    project_root_remove: struct { path: []const u8 },
 };
 
 pub const SessionArgs = union(enum) {
@@ -194,6 +197,9 @@ pub fn freeCommand(a: std.mem.Allocator, cmd: Command) void {
                 .repo_list => {},
                 .repo_remove => |c| a.free(c.name),
                 .linear_set_token => |c| a.free(c.token),
+                .project_root_add => |c| a.free(c.path),
+                .project_root_list => {},
+                .project_root_remove => |c| a.free(c.path),
             }
         },
         .session => |v| switch (v) {
@@ -427,6 +433,19 @@ fn parseConfig(a: std.mem.Allocator, argv: []const [:0]u8) ParseError!Command {
         if (std.mem.eql(u8, action, "set-token")) {
             if (argv.len < 3) return error.MissingArg;
             return .{ .config = .{ .linear_set_token = .{ .token = try a.dupe(u8, argv[2]) } } };
+        }
+        return error.UnknownCommand;
+    } else if (std.mem.eql(u8, sub, "project-root")) {
+        if (argv.len < 2) return error.MissingArg;
+        const action = argv[1];
+        if (std.mem.eql(u8, action, "add")) {
+            if (argv.len < 3) return error.MissingArg;
+            return .{ .config = .{ .project_root_add = .{ .path = try a.dupe(u8, argv[2]) } } };
+        } else if (std.mem.eql(u8, action, "list")) {
+            return .{ .config = .project_root_list };
+        } else if (std.mem.eql(u8, action, "remove")) {
+            if (argv.len < 3) return error.MissingArg;
+            return .{ .config = .{ .project_root_remove = .{ .path = try a.dupe(u8, argv[2]) } } };
         }
         return error.UnknownCommand;
     }
@@ -873,4 +892,44 @@ test "parse 'add foo --project /tmp/p'" {
     defer freeCommand(std.testing.allocator, cmd);
     try std.testing.expectEqualStrings("foo", cmd.add.title);
     try std.testing.expectEqualStrings("/tmp/p", cmd.add.project.?);
+}
+
+test "config project-root add" {
+    const args = [_][:0]u8{
+        @constCast(@as([:0]const u8, "config")),
+        @constCast(@as([:0]const u8, "project-root")),
+        @constCast(@as([:0]const u8, "add")),
+        @constCast(@as([:0]const u8, "/home/me/code")),
+    };
+    const cmd = try parseFromArgs(std.testing.allocator, &args);
+    defer freeCommand(std.testing.allocator, cmd);
+    try std.testing.expect(cmd == .config);
+    try std.testing.expect(cmd.config == .project_root_add);
+    try std.testing.expectEqualStrings("/home/me/code", cmd.config.project_root_add.path);
+}
+
+test "config project-root list" {
+    const args = [_][:0]u8{
+        @constCast(@as([:0]const u8, "config")),
+        @constCast(@as([:0]const u8, "project-root")),
+        @constCast(@as([:0]const u8, "list")),
+    };
+    const cmd = try parseFromArgs(std.testing.allocator, &args);
+    defer freeCommand(std.testing.allocator, cmd);
+    try std.testing.expect(cmd == .config);
+    try std.testing.expect(cmd.config == .project_root_list);
+}
+
+test "config project-root remove" {
+    const args = [_][:0]u8{
+        @constCast(@as([:0]const u8, "config")),
+        @constCast(@as([:0]const u8, "project-root")),
+        @constCast(@as([:0]const u8, "remove")),
+        @constCast(@as([:0]const u8, "/home/me/code")),
+    };
+    const cmd = try parseFromArgs(std.testing.allocator, &args);
+    defer freeCommand(std.testing.allocator, cmd);
+    try std.testing.expect(cmd == .config);
+    try std.testing.expect(cmd.config == .project_root_remove);
+    try std.testing.expectEqualStrings("/home/me/code", cmd.config.project_root_remove.path);
 }
