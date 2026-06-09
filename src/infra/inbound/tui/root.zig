@@ -2,6 +2,7 @@ pub const app = @import("app.zig");
 pub const view = @import("view.zig");
 pub const state = @import("state.zig");
 pub const modal = @import("modal.zig");
+pub const terminal_launcher = @import("terminal_launcher.zig");
 pub const UseCases = @import("use_cases.zig").UseCases;
 pub const run = app.run;
 pub const Selection = view.Selection;

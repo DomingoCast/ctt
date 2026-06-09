@@ -2,6 +2,7 @@ const std = @import("std");
 const app = @import("application");
 const d = @import("domain");
 const cfg = @import("infra_config");
+const terminal_launcher = @import("terminal_launcher.zig");
 
 pub const UseCases = struct {
     add_todo: app.AddTodo,
@@ -26,4 +27,5 @@ pub const UseCases = struct {
     color_scheme_cfg: cfg.ColorScheme = .{},
     db_path: []const u8 = "",
     cfg_repos: []const cfg.RepoConfig = &.{},
+    terminal_launcher: terminal_launcher.Launcher = .{ .kind = .none },
 };

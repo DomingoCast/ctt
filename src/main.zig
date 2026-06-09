@@ -151,6 +151,7 @@ pub fn main(init: std.process.Init) !void {
                 .color_scheme_cfg = cfg.ui.color_scheme,
                 .db_path = cfg.db_path,
                 .cfg_repos = cfg.repos,
+                .terminal_launcher = tui.terminal_launcher.detect(init.environ_map),
             };
             try tui.run(a, io, init.environ_map, &tui_uc);
         },
