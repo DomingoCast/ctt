@@ -72,6 +72,9 @@ const USAGE =
     \\  config repo add <path>                  add repo to ~/.config/ctt/config.json
     \\  config repo list
     \\  config repo remove <name>
+    \\  config project-root add <path>          add directory to scan for projects
+    \\  config project-root list
+    \\  config project-root remove <path>
     \\  config linear set-token <token>
     \\
     \\MCP server:
@@ -248,6 +251,9 @@ fn handleConfig(a: std.mem.Allocator, uc: *UseCases, args: args_mod.ConfigCmd, w
         .repo_list => try writer.print("config repo list not yet implemented (read config.json directly)\n", .{}),
         .repo_remove => |x| try writer.print("config repo remove not yet implemented (name={s})\n", .{x.name}),
         .linear_set_token => try writer.print("config linear set-token not yet implemented (set CTT_LINEAR_TOKEN or edit secrets.json)\n", .{}),
+        .project_root_add => |x| try writer.print("config project-root add not yet implemented (path={s}); edit \"project_roots\" in config.json directly\n", .{x.path}),
+        .project_root_list => try writer.print("config project-root list not yet implemented (read \"project_roots\" in config.json)\n", .{}),
+        .project_root_remove => |x| try writer.print("config project-root remove not yet implemented (path={s}); edit \"project_roots\" in config.json directly\n", .{x.path}),
     }
 }
 
