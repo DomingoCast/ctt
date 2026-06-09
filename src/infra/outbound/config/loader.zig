@@ -56,6 +56,7 @@ pub const Config = struct {
     db_path: []const u8,
     default_browser: ?[]const u8 = null,
     repos: []RepoConfig,
+    project_roots: []const []const u8 = &.{},
     providers: ProvidersConfig = .{},
     refresh: RefreshConfig = .{},
     ui: UiConfig = .{},
@@ -463,4 +464,42 @@ test "load rejects invalid color_scheme hex" {
     const p3 = try tmpRealPath(io, std.testing.allocator, tmp.dir, "bad3.json");
     defer std.testing.allocator.free(p3);
     try std.testing.expectError(error.BadFormat, load(io, std.testing.allocator, p3));
+}
+
+test "load config with project_roots" {
+    var tmp = std.testing.tmpDir(.{});
+    defer tmp.cleanup();
+
+    const io = std.testing.io;
+    try writeTmpFile(io, tmp.dir, "c.json",
+        \\{"db_path":"/x","repos":[],"project_roots":["/home/me/code","/home/me/work"]}
+    );
+
+    const path = try tmpRealPath(io, std.testing.allocator, tmp.dir, "c.json");
+    defer std.testing.allocator.free(path);
+
+    var parsed = try load(io, std.testing.allocator, path);
+    defer parsed.deinit();
+
+    try std.testing.expectEqual(@as(usize, 2), parsed.value.project_roots.len);
+    try std.testing.expectEqualStrings("/home/me/code", parsed.value.project_roots[0]);
+    try std.testing.expectEqualStrings("/home/me/work", parsed.value.project_roots[1]);
+}
+
+test "load config without project_roots defaults to empty" {
+    var tmp = std.testing.tmpDir(.{});
+    defer tmp.cleanup();
+
+    const io = std.testing.io;
+    try writeTmpFile(io, tmp.dir, "c.json",
+        \\{"db_path":"/x","repos":[]}
+    );
+
+    const path = try tmpRealPath(io, std.testing.allocator, tmp.dir, "c.json");
+    defer std.testing.allocator.free(path);
+
+    var parsed = try load(io, std.testing.allocator, path);
+    defer parsed.deinit();
+
+    try std.testing.expectEqual(@as(usize, 0), parsed.value.project_roots.len);
 }
