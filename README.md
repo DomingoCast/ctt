@@ -34,6 +34,7 @@ Create `~/.config/ctt/config.json`:
 {
   "db_path": "/Users/you/.config/ctt/db.sqlite",
   "repos": [],
+  "project_roots": ["~/projects"],
   "providers": {
     "patterns": [{"provider": "linear", "prefix_min": 2, "prefix_max": 6}]
   }
@@ -60,6 +61,7 @@ Press `?` inside the TUI for the live cheatsheet.
 | `j` / `k` | move within column |
 | `Enter` | open task detail panel |
 | `n` | new task (Tab cycles Title → Branch → Issue → Project) |
+| `Ctrl-P` | reopen fzf project picker (Add Todo modal, Project field; requires fzf) |
 | `r` | resume task in LLM (uses session handle if set, else fresh+context) |
 | `R` | force fresh + context |
 | `H` | add handoff note (multi-line, Ctrl-S to save) |
@@ -111,6 +113,12 @@ Full annotated `config.json`:
     {"name": "ctt", "path": "/Users/you/projects/ctt", "github": "tru4m/ctt"}
   ],
 
+  // Directories scanned one level deep at startup for project candidates.
+  // Each direct subdirectory becomes a project candidate in the Add-Todo picker.
+  // Combined with `repos`, this lets the picker find projects without registering
+  // every one explicitly.
+  "project_roots": ["~/projects", "~/code"],
+
   // Providers
   "providers": {
     // Ticket-prefix patterns for the Linear adapter
@@ -138,7 +146,11 @@ Full annotated `config.json`:
 
   // TUI options
   "ui": {
-    // Wraps the rendered resume command for terminal spawning
+    // Wraps the rendered resume command for terminal spawning.
+    // Optional — if omitted, the TUI auto-detects the running terminal
+    // (WezTerm, Kitty, Alacritty, iTerm2, Terminal.app) from environment
+    // variables and opens a new window of that terminal running the resume
+    // command. Set this only if you want a custom layout (e.g. a tmux split).
     "spawn": "tmux new-window -- {{cmd}}",
 
     // Auto-refresh poll interval (clamped to [500, 60000])
