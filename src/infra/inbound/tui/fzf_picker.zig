@@ -58,11 +58,10 @@ pub fn pickFromPipe(
     var out_buf: [4096]u8 = undefined;
     var r_buf: [4096]u8 = undefined;
     var r = child.stdout.?.readerStreaming(io, &r_buf);
-    const n = r.interface.readSliceShort(&out_buf) catch |err| switch (err) {
-        error.EndOfStream => 0,
-        else => return err,
-    };
-    const text = std.mem.trimRight(u8, out_buf[0..n], "\r\n");
+    // readSliceShort returns ShortError (error{ReadFailed}) — it returns 0 for
+    // EOF rather than surfacing error.EndOfStream. Propagate ReadFailed as-is.
+    const n = try r.interface.readSliceShort(&out_buf);
+    const text = std.mem.trimEnd(u8, out_buf[0..n], "\r\n");
 
     const term = try child.wait(io);
     switch (term) {

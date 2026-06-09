@@ -11,6 +11,7 @@ const tick = @import("tick.zig");
 const glyphs_mod = @import("glyphs.zig");
 const theme_mod = @import("theme.zig");
 const repo_match = @import("repo_match.zig");
+const fzf_picker = @import("fzf_picker.zig");
 
 const Event = union(enum) {
     key_press: vaxis.Key,
@@ -74,6 +75,11 @@ pub fn run(
                 // 'q' only exits in normal mode
                 if (state.mode == .normal and k.matches('q', .{})) break;
                 try handleKey(a, uc, &state, k);
+                // Check if a key handler requested the fzf project picker.
+                if (state.fzf_request_pending) {
+                    state.fzf_request_pending = false;
+                    try runFzfPicker(a, uc, &state, &vx, &tty, &loop);
+                }
             },
             .winsize => |ws| try vx.resize(a, tty.writer(), ws),
             .tick => {
@@ -188,6 +194,10 @@ fn handleModalKey(a: std.mem.Allocator, uc: *UseCases, state: *state_mod.State, 
     }
     if (k.matches(vaxis.Key.tab, .{})) {
         modal.cycleFocus();
+        // Auto-open fzf when focus lands on the project field.
+        if (modal.focus == .project and state.fzf_available) {
+            state.fzf_request_pending = true;
+        }
         return;
     }
     if (k.matches(vaxis.Key.backspace, .{})) {
@@ -204,6 +214,14 @@ fn handleModalKey(a: std.mem.Allocator, uc: *UseCases, state: *state_mod.State, 
 
 fn handleProjectFieldKey(a: std.mem.Allocator, uc: *UseCases, state: *state_mod.State, k: vaxis.Key) !void {
     const modal = &state.add_todo_modal;
+
+    // Ctrl-P: request fzf picker (handled in run() after this returns)
+    if (k.matches('p', .{ .ctrl = true })) {
+        if (state.fzf_available) {
+            state.fzf_request_pending = true;
+        }
+        return;
+    }
 
     var match_buf: [repo_match.MAX_RESULTS]repo_match.Match = undefined;
     const matches = repo_match.fuzzyMatchCandidates(uc.candidates, modal.project_buf.items, &match_buf);
@@ -248,6 +266,43 @@ fn handleProjectFieldKey(a: std.mem.Allocator, uc: *UseCases, state: *state_mod.
         modal.project_selection = 0;
         modal.project_dropdown_open = true;
         return;
+    }
+}
+
+/// Suspend the TUI, run fzf, resume the TUI, and fill the project field if a
+/// selection was made. Called from run() when state.fzf_request_pending is set.
+fn runFzfPicker(
+    a: std.mem.Allocator,
+    uc: *UseCases,
+    state: *state_mod.State,
+    vx: *vaxis.Vaxis,
+    tty: *vaxis.Tty,
+    loop: *vaxis.Loop(Event),
+) !void {
+    // --- Suspend TUI ---
+    loop.stop();
+    try vx.exitAltScreen(tty.writer());
+
+    // --- Run fzf (blocking) ---
+    const maybe_sel = fzf_picker.pickFromPipe(a, uc.io, uc.candidates) catch |err| blk: {
+        // fzf not found or other spawn error — ignore and resume
+        std.log.scoped(.tui).warn("fzf_picker: {s}", .{@errorName(err)});
+        break :blk null;
+    };
+
+    // --- Resume TUI ---
+    try vx.enterAltScreen(tty.writer());
+    try loop.start();
+    // Force a full redraw on the next render call.
+    vx.refresh = true;
+
+    // --- Apply selection ---
+    if (maybe_sel) |sel| {
+        defer fzf_picker.freeSelection(a, sel);
+        const modal = &state.add_todo_modal;
+        modal.project_buf.clearRetainingCapacity();
+        try modal.project_buf.appendSlice(a, sel.path);
+        modal.project_dropdown_open = false;
     }
 }
 

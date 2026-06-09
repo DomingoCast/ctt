@@ -78,6 +78,9 @@ pub const State = struct {
     cfg_repos: []const @import("infra_config").RepoConfig = &.{},
     candidates: []const project_candidates.Candidate = &.{},
     fzf_available: bool = false,
+    /// Set to true by key handlers when they want run() to open the fzf picker.
+    /// run() checks this after handleKey returns, executes the picker, and clears it.
+    fzf_request_pending: bool = false,
     /// True while doRefresh is in flight; consumed by the footer pulse (Phase F).
     refreshing: bool = false,
     last_db_mtime: i128 = 0,
