@@ -174,6 +174,19 @@ pub fn loadSecretsToken(io: std.Io, a: std.mem.Allocator, path: []const u8) Load
     return if (parsed.value.linear_token) |t| a.dupe(u8, t) catch error.OutOfMemory else null;
 }
 
+/// Expand a leading `~` or `~/` to the user's home directory.
+/// Other tildes are left alone. Returns a newly-allocated string;
+/// caller must free.
+pub fn expandHome(a: std.mem.Allocator, path: []const u8, home: []const u8) ![]u8 {
+    if (path.len == 1 and path[0] == '~') {
+        return a.dupe(u8, home);
+    }
+    if (path.len >= 2 and path[0] == '~' and path[1] == '/') {
+        return std.fmt.allocPrint(a, "{s}{s}", .{ home, path[1..] });
+    }
+    return a.dupe(u8, path);
+}
+
 // ─── Tests ────────────────────────────────────────────────────────────────────
 
 fn writeTmpFile(io: std.Io, dir: std.Io.Dir, name: []const u8, data: []const u8) !void {
@@ -502,4 +515,28 @@ test "load config without project_roots defaults to empty" {
     defer parsed.deinit();
 
     try std.testing.expectEqual(@as(usize, 0), parsed.value.project_roots.len);
+}
+
+test "expandHome leaves absolute paths unchanged" {
+    const got = try expandHome(std.testing.allocator, "/abs/path", "/home/me");
+    defer std.testing.allocator.free(got);
+    try std.testing.expectEqualStrings("/abs/path", got);
+}
+
+test "expandHome rewrites tilde prefix" {
+    const got = try expandHome(std.testing.allocator, "~/code", "/home/me");
+    defer std.testing.allocator.free(got);
+    try std.testing.expectEqualStrings("/home/me/code", got);
+}
+
+test "expandHome rewrites bare tilde" {
+    const got = try expandHome(std.testing.allocator, "~", "/home/me");
+    defer std.testing.allocator.free(got);
+    try std.testing.expectEqualStrings("/home/me", got);
+}
+
+test "expandHome leaves tilde-in-middle alone" {
+    const got = try expandHome(std.testing.allocator, "/x/~foo", "/home/me");
+    defer std.testing.allocator.free(got);
+    try std.testing.expectEqualStrings("/x/~foo", got);
 }
