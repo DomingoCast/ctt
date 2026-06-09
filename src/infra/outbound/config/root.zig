@@ -11,6 +11,7 @@ pub const ColorScheme = loader.ColorScheme;
 pub const LoadError = loader.LoadError;
 pub const load = loader.load;
 pub const loadSecretsToken = loader.loadSecretsToken;
+pub const expandHome = loader.expandHome;
 
 test {
     _ = loader;

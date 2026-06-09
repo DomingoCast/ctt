@@ -59,8 +59,19 @@ pub fn main(init: std.process.Init) !void {
     const repos = try syncRepos(a, &db, cfg.repos);
     defer freeRepos(a, repos);
 
+    // Expand `~/` / `~` in project_roots before scanning.
+    const expanded_roots = try a.alloc([]u8, cfg.project_roots.len);
+    defer {
+        for (expanded_roots) |p| a.free(p);
+        a.free(expanded_roots);
+    }
+    for (cfg.project_roots, 0..) |raw, i| {
+        expanded_roots[i] = try cfg_mod.expandHome(a, raw, home);
+    }
+    const roots_const: [][]const u8 = @ptrCast(expanded_roots);
+
     // Build TUI candidate list (configured repos + scanned project_roots).
-    const candidates = try tui.project_candidates.build(a, io, cfg.repos, cfg.project_roots);
+    const candidates = try tui.project_candidates.build(a, io, cfg.repos, roots_const);
     defer {
         tui.project_candidates.freeCandidates(a, candidates);
         a.free(candidates);
