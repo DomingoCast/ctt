@@ -4,6 +4,7 @@ const view = @import("view.zig");
 const d = @import("domain");
 const glyphs_mod = @import("glyphs.zig");
 const theme_mod = @import("theme.zig");
+const project_candidates = @import("project_candidates.zig");
 
 pub const Mode = enum { normal, add_todo_modal, detail, handoff_modal, help_modal };
 
@@ -75,6 +76,8 @@ pub const State = struct {
     sel: view.Selection = .{},
     mode: Mode = .normal,
     cfg_repos: []const @import("infra_config").RepoConfig = &.{},
+    candidates: []const project_candidates.Candidate = &.{},
+    fzf_available: bool = false,
     /// True while doRefresh is in flight; consumed by the footer pulse (Phase F).
     refreshing: bool = false,
     last_db_mtime: i128 = 0,

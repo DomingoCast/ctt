@@ -69,6 +69,68 @@ fn scoreRepo(repo: cfg.RepoConfig, lq: []const u8) u8 {
     return 255;
 }
 
+const project_candidates = @import("project_candidates.zig");
+
+/// Same as `fuzzyMatch` but accepts pre-built candidates instead of `RepoConfig`.
+pub fn fuzzyMatchCandidates(
+    candidates: []const project_candidates.Candidate,
+    query: []const u8,
+    out: []Match,
+) []Match {
+    std.debug.assert(out.len >= MAX_RESULTS);
+
+    if (query.len == 0) {
+        const n = @min(candidates.len, MAX_RESULTS);
+        for (candidates[0..n], 0..) |c, i| {
+            out[i] = .{ .name = c.name, .path = c.path };
+        }
+        return out[0..n];
+    }
+
+    var lower_q_buf: [256]u8 = undefined;
+    if (query.len > lower_q_buf.len) return out[0..0];
+    const lq = std.ascii.lowerString(&lower_q_buf, query);
+
+    const Scored = struct { bucket: u8, idx: usize };
+    var scored: [256]Scored = undefined;
+    var n: usize = 0;
+
+    for (candidates, 0..) |c, i| {
+        if (n >= scored.len) break;
+        const score = scoreCandidate(c, lq);
+        if (score < 255) {
+            scored[n] = .{ .bucket = score, .idx = i };
+            n += 1;
+        }
+    }
+
+    std.mem.sort(Scored, scored[0..n], {}, struct {
+        fn lt(_: void, a: Scored, b: Scored) bool {
+            if (a.bucket != b.bucket) return a.bucket < b.bucket;
+            return a.idx < b.idx;
+        }
+    }.lt);
+
+    const take = @min(n, MAX_RESULTS);
+    for (scored[0..take], 0..) |s, i| {
+        out[i] = .{ .name = candidates[s.idx].name, .path = candidates[s.idx].path };
+    }
+    return out[0..take];
+}
+
+fn scoreCandidate(c: project_candidates.Candidate, lq: []const u8) u8 {
+    var name_buf: [256]u8 = undefined;
+    var path_buf: [1024]u8 = undefined;
+    if (c.name.len > name_buf.len or c.path.len > path_buf.len) return 255;
+    const ln = std.ascii.lowerString(&name_buf, c.name);
+    const lp = std.ascii.lowerString(&path_buf, c.path);
+
+    if (std.mem.startsWith(u8, ln, lq)) return 0;
+    if (std.mem.indexOf(u8, ln, lq) != null) return 1;
+    if (std.mem.indexOf(u8, lp, lq) != null) return 2;
+    return 255;
+}
+
 // ─── Tests ────────────────────────────────────────────────────────────────
 
 fn r(name: []const u8, path: []const u8) cfg.RepoConfig {

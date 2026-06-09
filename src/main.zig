@@ -59,6 +59,28 @@ pub fn main(init: std.process.Init) !void {
     const repos = try syncRepos(a, &db, cfg.repos);
     defer freeRepos(a, repos);
 
+    // Build TUI candidate list (configured repos + scanned project_roots).
+    const candidates = try tui.project_candidates.build(a, io, cfg.repos, cfg.project_roots);
+    defer {
+        tui.project_candidates.freeCandidates(a, candidates);
+        a.free(candidates);
+    }
+
+    // Probe fzf availability once.
+    const fzf_available = blk: {
+        var child = std.process.spawn(io, .{
+            .argv = &[_][]const u8{ "which", "fzf" },
+            .stdin = .ignore,
+            .stdout = .ignore,
+            .stderr = .ignore,
+        }) catch break :blk false;
+        const term = child.wait(io) catch break :blk false;
+        break :blk switch (term) {
+            .exited => |code| code == 0,
+            else => false,
+        };
+    };
+
     // === Build patterns from config ===
     const patterns = try buildPatterns(a, cfg.providers.patterns);
     defer a.free(patterns);
@@ -152,6 +174,8 @@ pub fn main(init: std.process.Init) !void {
                 .db_path = cfg.db_path,
                 .cfg_repos = cfg.repos,
                 .terminal_launcher = tui.terminal_launcher.detect(init.environ_map),
+                .candidates = candidates,
+                .fzf_available = fzf_available,
             };
             try tui.run(a, io, init.environ_map, &tui_uc);
         },

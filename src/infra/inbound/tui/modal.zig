@@ -111,7 +111,7 @@ pub fn renderAddTodo(win: vaxis.Window, modal: *const state_mod.AddTodoModal, st
     // Render inline dropdown when project field is focused and dropdown is open
     if (modal.focus == .project and modal.project_dropdown_open) {
         var match_buf: [repo_match.MAX_RESULTS]repo_match.Match = undefined;
-        const matches = repo_match.fuzzyMatch(state.cfg_repos, modal.project_buf.items, &match_buf);
+        const matches = repo_match.fuzzyMatchCandidates(state.candidates, modal.project_buf.items, &match_buf);
         const has_use_path = modal.project_buf.items.len > 0 and !exactMatchInline(matches, modal.project_buf.items);
         const dropdown_rows: u16 = @intCast(matches.len + @as(usize, if (has_use_path) 1 else 0));
         if (dropdown_rows > 0) {

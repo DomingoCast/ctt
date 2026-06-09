@@ -61,6 +61,8 @@ pub fn run(
     state.colors = theme_mod.ColorScheme.fromConfig(uc.color_scheme_cfg);
     state.refresh_interval_ms = uc.refresh_interval_ms;
     state.cfg_repos = uc.cfg_repos;
+    state.candidates = uc.candidates;
+    state.fzf_available = uc.fzf_available;
 
     // Initial load
     try doRefresh(a, uc, &state, true);
@@ -204,7 +206,7 @@ fn handleProjectFieldKey(a: std.mem.Allocator, uc: *UseCases, state: *state_mod.
     const modal = &state.add_todo_modal;
 
     var match_buf: [repo_match.MAX_RESULTS]repo_match.Match = undefined;
-    const matches = repo_match.fuzzyMatch(uc.cfg_repos, modal.project_buf.items, &match_buf);
+    const matches = repo_match.fuzzyMatchCandidates(uc.candidates, modal.project_buf.items, &match_buf);
     const has_use_path = modal.project_buf.items.len > 0 and !exactMatch(matches, modal.project_buf.items);
     const visible: u8 = @intCast(matches.len + @as(usize, if (has_use_path) 1 else 0));
 
