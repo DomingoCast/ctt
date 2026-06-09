@@ -50,7 +50,31 @@ pub fn buildArgv(
         .kitty => try dupeArgv(a, &[_][]const u8{
             "kitty", "--directory", cwd, "/bin/sh", "-c", cmd,
         }),
-        .iterm2, .terminal_app => @panic("osascript launchers handled in a later task"),
+        .terminal_app => blk: {
+            const cwd_quoted = try shSingleQuoteEscape(a, cwd);
+            defer a.free(cwd_quoted);
+            const script = try std.fmt.allocPrint(
+                a,
+                "tell application \"Terminal\" to do script \"cd '{s}' && {s}\"",
+                .{ cwd_quoted, cmd },
+            );
+            defer a.free(script);
+            break :blk try dupeArgv(a, &[_][]const u8{ "osascript", "-e", script });
+        },
+        .iterm2 => blk: {
+            const cwd_quoted = try shSingleQuoteEscape(a, cwd);
+            defer a.free(cwd_quoted);
+            const script = try std.fmt.allocPrint(
+                a,
+                "tell application \"iTerm\"\n" ++
+                    "  create window with default profile\n" ++
+                    "  tell current session of current window to write text \"cd '{s}' && {s}\"\n" ++
+                    "end tell",
+                .{ cwd_quoted, cmd },
+            );
+            defer a.free(script);
+            break :blk try dupeArgv(a, &[_][]const u8{ "osascript", "-e", script });
+        },
         .none => return error.NoTerminalDetected,
     };
 }
@@ -69,6 +93,21 @@ fn dupeArgv(a: std.mem.Allocator, src: []const []const u8) ![]const []const u8 {
         out[i] = try a.dupe(u8, src[i]);
     }
     return out;
+}
+
+/// Escapes a string for safe embedding inside single quotes in a POSIX shell.
+/// `it's` → `it'\''s`. Caller owns the returned slice.
+fn shSingleQuoteEscape(a: std.mem.Allocator, s: []const u8) ![]u8 {
+    var out: std.ArrayList(u8) = .empty;
+    errdefer out.deinit(a);
+    for (s) |c| {
+        if (c == '\'') {
+            try out.appendSlice(a, "'\\''");
+        } else {
+            try out.append(a, c);
+        }
+    }
+    return out.toOwnedSlice(a);
 }
 
 // ─── Tests ────────────────────────────────────────────────────────────────────
@@ -178,5 +217,40 @@ test "buildArgv .none returns NoTerminalDetected" {
     try std.testing.expectError(
         error.NoTerminalDetected,
         buildArgv(std.testing.allocator, .{ .kind = .none }, "/", "ls"),
+    );
+}
+
+test "buildArgv terminal_app produces osascript do-script" {
+    const argv = try buildArgv(std.testing.allocator, .{ .kind = .terminal_app }, "/x", "claude");
+    defer freeArgv(std.testing.allocator, argv);
+    try std.testing.expectEqual(@as(usize, 3), argv.len);
+    try std.testing.expectEqualStrings("osascript", argv[0]);
+    try std.testing.expectEqualStrings("-e", argv[1]);
+    try std.testing.expectEqualStrings(
+        "tell application \"Terminal\" to do script \"cd '/x' && claude\"",
+        argv[2],
+    );
+}
+
+test "buildArgv iterm2 produces osascript with create-window" {
+    const argv = try buildArgv(std.testing.allocator, .{ .kind = .iterm2 }, "/y", "ls");
+    defer freeArgv(std.testing.allocator, argv);
+    try std.testing.expectEqual(@as(usize, 3), argv.len);
+    try std.testing.expectEqualStrings("osascript", argv[0]);
+    try std.testing.expectEqualStrings("-e", argv[1]);
+    const expected =
+        "tell application \"iTerm\"\n" ++
+        "  create window with default profile\n" ++
+        "  tell current session of current window to write text \"cd '/y' && ls\"\n" ++
+        "end tell";
+    try std.testing.expectEqualStrings(expected, argv[2]);
+}
+
+test "buildArgv terminal_app escapes single quotes in cwd" {
+    const argv = try buildArgv(std.testing.allocator, .{ .kind = .terminal_app }, "/it's/here", "ls");
+    defer freeArgv(std.testing.allocator, argv);
+    try std.testing.expectEqualStrings(
+        "tell application \"Terminal\" to do script \"cd '/it'\\''s/here' && ls\"",
+        argv[2],
     );
 }
