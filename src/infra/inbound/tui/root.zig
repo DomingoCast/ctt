@@ -20,4 +20,5 @@ test {
     // app.zig requires a real TTY, so don't include it in the test block
     _ = @import("repo_match.zig");
     _ = @import("terminal_launcher.zig");
+    _ = @import("project_candidates.zig");
 }
