@@ -504,12 +504,55 @@ fn doResume(a: std.mem.Allocator, uc: *UseCases, state: *state_mod.State, force_
     defer a.free(cmd.command);
 
     if (no_spawn) {
-        // No terminal multiplexer configured: show the command in the footer.
-        // File is unused — clean up.
-        std.Io.Dir.deleteFileAbsolute(uc.io, path) catch {};
-        const msg = try std.fmt.allocPrint(a, "resume cmd: {s}", .{cmd.command});
-        defer a.free(msg);
-        try state.setMessage(msg);
+        const launcher_kind = uc.terminal_launcher.kind;
+        if (launcher_kind == .none) {
+            // No multiplexer configured and no known terminal detected:
+            // print the command in the footer (legacy fallback). File unused.
+            std.Io.Dir.deleteFileAbsolute(uc.io, path) catch {};
+            const msg = try std.fmt.allocPrint(a, "resume cmd: {s}", .{cmd.command});
+            defer a.free(msg);
+            try state.setMessage(msg);
+            return;
+        }
+
+        // Open a new terminal window via the auto-detected launcher.
+        // cwd = task.project_path or $HOME (or "/" as a last resort).
+        const home_z = std.c.getenv("HOME");
+        const fallback_cwd: []const u8 = if (home_z) |p| std.mem.span(p) else "/";
+        const spawn_cwd_path: []const u8 = if (ctx.task.project_path) |p| p else fallback_cwd;
+
+        const terminal_launcher = @import("terminal_launcher.zig");
+        const argv = terminal_launcher.buildArgv(
+            a,
+            uc.terminal_launcher,
+            spawn_cwd_path,
+            cmd.command,
+        ) catch |err| {
+            std.Io.Dir.deleteFileAbsolute(uc.io, path) catch {};
+            const m = try std.fmt.allocPrint(a, "resume failed: {s}", .{@errorName(err)});
+            defer a.free(m);
+            try state.setMessage(m);
+            return;
+        };
+        defer terminal_launcher.freeArgv(a, argv);
+
+        _ = std.process.spawn(uc.io, .{
+            .argv = argv,
+            .stdin = .ignore,
+            .stdout = .ignore,
+            .stderr = .ignore,
+        }) catch |err| {
+            std.Io.Dir.deleteFileAbsolute(uc.io, path) catch {};
+            const m = try std.fmt.allocPrint(a, "resume failed: {s}", .{@errorName(err)});
+            defer a.free(m);
+            try state.setMessage(m);
+            return;
+        };
+        // Do NOT delete the temp file — the launched terminal reads it asynchronously.
+
+        const m = try std.fmt.allocPrint(a, "spawned in {s}", .{@tagName(launcher_kind)});
+        defer a.free(m);
+        try state.setMessage(m);
         return;
     }
 
