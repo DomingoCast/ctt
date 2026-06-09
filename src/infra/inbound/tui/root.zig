@@ -4,6 +4,7 @@ pub const state = @import("state.zig");
 pub const modal = @import("modal.zig");
 pub const terminal_launcher = @import("terminal_launcher.zig");
 pub const project_candidates = @import("project_candidates.zig");
+pub const fzf_picker = @import("fzf_picker.zig");
 pub const UseCases = @import("use_cases.zig").UseCases;
 pub const run = app.run;
 pub const Selection = view.Selection;
@@ -22,4 +23,5 @@ test {
     _ = @import("repo_match.zig");
     _ = @import("terminal_launcher.zig");
     _ = @import("project_candidates.zig");
+    _ = @import("fzf_picker.zig");
 }
